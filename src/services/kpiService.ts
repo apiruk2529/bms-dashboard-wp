@@ -12,7 +12,9 @@ import type {
   DoctorWorkload,
   HourlyDistribution,
   KpiSummary,
+  OverviewStats,
   PatientTypeDistribution,
+  RecentVisit,
   SqlApiResponse,
   VisitTrend,
 } from '@/types';
@@ -389,5 +391,122 @@ export async function getPatientTypeDistribution(
     pttypeCode: String(row['pttype_code'] ?? ''),
     pttypeName: String(row['pttype_name'] ?? ''),
     visitCount: Number(row['visit_count'] ?? 0),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Overview - Extended Stats & Recent Activity
+// ---------------------------------------------------------------------------
+
+/**
+ * Get recent visits (last 10) with department and doctor names.
+ */
+export async function getRecentVisits(
+  config: ConnectionConfig,
+  dbType: DatabaseType,
+): Promise<RecentVisit[]> {
+  const sql =
+    `SELECT o.vn, o.hn, ` +
+    `${queryBuilder.dateFormat(dbType, 'o.vstdate', '%Y-%m-%d')} as vstdate, ` +
+    `CAST(o.vsttime AS CHAR) as vsttime, ` +
+    `COALESCE(k.department, 'Unknown') as department_name, ` +
+    `COALESCE(d.name, 'Unknown') as doctor_name ` +
+    `FROM ovst o ` +
+    `LEFT JOIN kskdepartment k ON o.cur_dep = k.depcode ` +
+    `LEFT JOIN doctor d ON o.doctor = d.code ` +
+    `ORDER BY o.vstdate DESC, o.vsttime DESC ` +
+    `LIMIT 10`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    vn: String(row['vn'] ?? ''),
+    hn: String(row['hn'] ?? ''),
+    vstdate: String(row['vstdate'] ?? ''),
+    vsttime: String(row['vsttime'] ?? ''),
+    departmentName: String(row['department_name'] ?? 'Unknown'),
+    doctorName: String(row['doctor_name'] ?? 'Unknown'),
+  }));
+}
+
+/**
+ * Get overview statistics for the dashboard.
+ */
+export async function getOverviewStats(
+  config: ConnectionConfig,
+  dbType: DatabaseType,
+): Promise<OverviewStats> {
+  // Use simpler approach - run individual queries
+  const queries = [
+    // Total registered patients (from ovst_patient_record distinct hn)
+    `SELECT COUNT(DISTINCT hn) as total FROM ovst_patient_record`,
+    // Total visits this month
+    `SELECT COUNT(*) as total FROM ovst WHERE ${queryBuilder.dateFormat(dbType, 'vstdate', '%Y-%m')} = ${queryBuilder.dateFormat(dbType, queryBuilder.currentDate(dbType), '%Y-%m')}`,
+    // Total visits last month - use a date range approach
+    `SELECT COUNT(*) as total FROM ovst WHERE vstdate >= ${queryBuilder.dateSubtract(dbType, 60)} AND vstdate < ${queryBuilder.dateSubtract(dbType, 30)}`,
+    // Total active doctors
+    `SELECT COUNT(*) as total FROM doctor WHERE active = 'Y' OR active IS NULL`,
+    // Total departments
+    `SELECT COUNT(*) as total FROM kskdepartment`,
+  ];
+
+  const results = await Promise.all(
+    queries.map(sql => executeSqlViaApi(sql, config).then(r => {
+      const rows = parseQueryResponse(r, (row) => Number(row['total'] ?? 0));
+      return rows[0] ?? 0;
+    }).catch(() => 0))
+  );
+
+  const totalVisitsThisMonth = results[1];
+  const daysInMonth = new Date().getDate();
+
+  return {
+    totalRegisteredPatients: results[0],
+    totalVisitsThisMonth: results[1],
+    totalVisitsLastMonth: results[2],
+    avgDailyVisitsThisMonth: daysInMonth > 0 ? Math.round(totalVisitsThisMonth / daysInMonth) : 0,
+    totalDoctors: results[3],
+    totalDepartments: results[4],
+  };
+}
+
+/**
+ * Get visit counts for the last 7 days as a mini trend.
+ */
+export async function getWeeklyMiniTrend(
+  config: ConnectionConfig,
+  dbType: DatabaseType,
+): Promise<VisitTrend[]> {
+  const sql =
+    `SELECT ${queryBuilder.dateFormat(dbType, 'vstdate', '%Y-%m-%d')} as visit_date, COUNT(*) as visit_count ` +
+    `FROM ovst ` +
+    `WHERE vstdate >= ${queryBuilder.dateSubtract(dbType, 7)} ` +
+    `GROUP BY ${queryBuilder.dateFormat(dbType, 'vstdate', '%Y-%m-%d')} ` +
+    `ORDER BY visit_date`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    date: String(row['visit_date'] ?? ''),
+    visitCount: Number(row['visit_count'] ?? 0),
+  }));
+}
+
+/**
+ * Get top 5 doctors by patient count for the current month.
+ */
+export async function getTopDoctorsThisMonth(
+  config: ConnectionConfig,
+  dbType: DatabaseType,
+): Promise<DoctorWorkload[]> {
+  const sql =
+    `SELECT o.doctor as doctor_code, d.name as doctor_name, COUNT(*) as patient_count ` +
+    `FROM ovst o ` +
+    `LEFT JOIN doctor d ON o.doctor = d.code ` +
+    `WHERE ${queryBuilder.dateFormat(dbType, 'o.vstdate', '%Y-%m')} = ${queryBuilder.dateFormat(dbType, queryBuilder.currentDate(dbType), '%Y-%m')} ` +
+    `GROUP BY o.doctor, d.name ` +
+    `ORDER BY patient_count DESC ` +
+    `LIMIT 5`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    doctorCode: String(row['doctor_code'] ?? ''),
+    doctorName: String(row['doctor_name'] ?? 'Unknown'),
+    patientCount: Number(row['patient_count'] ?? 0),
   }));
 }

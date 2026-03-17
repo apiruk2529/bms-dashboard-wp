@@ -170,3 +170,23 @@ export interface PatientTypeDistribution {
   pttypeName: string;
   visitCount: number;
 }
+
+/** Recent visit record for the overview dashboard */
+export interface RecentVisit {
+  vn: string
+  hn: string
+  vstdate: string
+  vsttime: string
+  departmentName: string
+  doctorName: string
+}
+
+/** Overview statistics beyond the 4 main KPIs */
+export interface OverviewStats {
+  totalRegisteredPatients: number
+  totalVisitsThisMonth: number
+  totalVisitsLastMonth: number
+  avgDailyVisitsThisMonth: number
+  totalDoctors: number
+  totalDepartments: number
+}
