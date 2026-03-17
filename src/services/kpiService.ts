@@ -623,3 +623,133 @@ export async function getTopDepartmentsForRange(
     visitCount: Number(row['visit_count'] ?? 0),
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Diagnosis, Medication Cost & Death Statistics (Trends page)
+// ---------------------------------------------------------------------------
+
+/**
+ * Top 10 diagnoses by visit count for a date range.
+ * Joins ovstdiag with icd101 for Thai diagnosis names.
+ */
+export async function getTopDiagnoses(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+): Promise<{ icd10: string; diagnosisName: string; visitCount: number }[]> {
+  const sql =
+    `SELECT od.icd10, COALESCE(i.tname, i.name, od.icd10) as diagnosis_name, COUNT(*) as visit_count ` +
+    `FROM ovstdiag od ` +
+    `LEFT JOIN icd101 i ON od.icd10 = i.code ` +
+    `WHERE od.vstdate >= '${startDate}' AND od.vstdate <= '${endDate}' ` +
+    `GROUP BY od.icd10, i.tname, i.name ` +
+    `ORDER BY visit_count DESC ` +
+    `LIMIT 10`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    icd10: String(row['icd10'] ?? ''),
+    diagnosisName: String(row['diagnosis_name'] ?? ''),
+    visitCount: Number(row['visit_count'] ?? 0),
+  }));
+}
+
+/**
+ * Top 10 medications by total cost for a date range.
+ * Joins opitemrece with drugitems for drug names.
+ */
+export async function getTopMedications(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+): Promise<{ drugName: string; totalQty: number; totalCost: number }[]> {
+  const sql =
+    `SELECT COALESCE(d.name, 'ไม่ระบุ') as drug_name, ` +
+    `SUM(op.qty) as total_qty, ` +
+    `SUM(op.qty * op.unitprice) as total_cost ` +
+    `FROM opitemrece op ` +
+    `LEFT JOIN drugitems d ON op.icode = d.icode ` +
+    `WHERE op.vstdate >= '${startDate}' AND op.vstdate <= '${endDate}' ` +
+    `GROUP BY d.name ` +
+    `ORDER BY total_cost DESC ` +
+    `LIMIT 10`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    drugName: String(row['drug_name'] ?? 'ไม่ระบุ'),
+    totalQty: Number(row['total_qty'] ?? 0),
+    totalCost: Number(row['total_cost'] ?? 0),
+  }));
+}
+
+/**
+ * Medication cost summary for a date range.
+ */
+export async function getMedicationCostSummary(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+): Promise<{ totalItems: number; totalCost: number; uniqueDrugs: number }> {
+  const sql =
+    `SELECT COUNT(*) as total_items, ` +
+    `COALESCE(SUM(qty * unitprice), 0) as total_cost, ` +
+    `COUNT(DISTINCT icode) as unique_drugs ` +
+    `FROM opitemrece ` +
+    `WHERE vstdate >= '${startDate}' AND vstdate <= '${endDate}'`;
+  const response = await executeSqlViaApi(sql, config);
+  const rows = parseQueryResponse(response, (row) => ({
+    totalItems: Number(row['total_items'] ?? 0),
+    totalCost: Number(row['total_cost'] ?? 0),
+    uniqueDrugs: Number(row['unique_drugs'] ?? 0),
+  }));
+  return rows[0] ?? { totalItems: 0, totalCost: 0, uniqueDrugs: 0 };
+}
+
+/**
+ * Death statistics summary.
+ */
+export async function getDeathSummary(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+): Promise<{ totalDeaths: number; thisYearDeaths: number; thisMonthDeaths: number }> {
+  const currentYear = new Date().getFullYear();
+  const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+  const yearStart = `${currentYear}-01-01`;
+  const monthStart = `${currentYear}-${currentMonth}-01`;
+
+  const sql =
+    `SELECT ` +
+    `COUNT(*) as total_deaths, ` +
+    `SUM(CASE WHEN death_date >= '${yearStart}' THEN 1 ELSE 0 END) as this_year, ` +
+    `SUM(CASE WHEN death_date >= '${monthStart}' THEN 1 ELSE 0 END) as this_month ` +
+    `FROM death`;
+  const response = await executeSqlViaApi(sql, config);
+  const rows = parseQueryResponse(response, (row) => ({
+    totalDeaths: Number(row['total_deaths'] ?? 0),
+    thisYearDeaths: Number(row['this_year'] ?? 0),
+    thisMonthDeaths: Number(row['this_month'] ?? 0),
+  }));
+  return rows[0] ?? { totalDeaths: 0, thisYearDeaths: 0, thisMonthDeaths: 0 };
+}
+
+/**
+ * Total diagnosis count and unique ICD10 codes for a date range.
+ */
+export async function getDiagnosisSummary(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+): Promise<{ totalDiagnoses: number; uniqueCodes: number }> {
+  const sql =
+    `SELECT COUNT(*) as total_diagnoses, COUNT(DISTINCT icd10) as unique_codes ` +
+    `FROM ovstdiag ` +
+    `WHERE vstdate >= '${startDate}' AND vstdate <= '${endDate}'`;
+  const response = await executeSqlViaApi(sql, config);
+  const rows = parseQueryResponse(response, (row) => ({
+    totalDiagnoses: Number(row['total_diagnoses'] ?? 0),
+    uniqueCodes: Number(row['unique_codes'] ?? 0),
+  }));
+  return rows[0] ?? { totalDiagnoses: 0, uniqueCodes: 0 };
+}

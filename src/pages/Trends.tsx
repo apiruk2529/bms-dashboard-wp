@@ -13,6 +13,11 @@ import {
   getVisitsByDayOfWeek,
   getTopDepartmentsForRange,
   computeTrendSummary,
+  getTopDiagnoses,
+  getTopMedications,
+  getMedicationCostSummary,
+  getDeathSummary,
+  getDiagnosisSummary,
 } from '@/services/kpiService'
 import type { VisitTrend, HourlyDistribution, DepartmentWorkload } from '@/types'
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker'
@@ -22,7 +27,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/EmptyState'
 import { getDateRange } from '@/utils/dateUtils'
-import { TrendingUp, BarChart3, ArrowUp, CalendarCheck } from 'lucide-react'
+import {
+  TrendingUp,
+  BarChart3,
+  ArrowUp,
+  CalendarCheck,
+  Pill,
+  Banknote,
+  Package,
+  Stethoscope,
+  HeartPulse,
+  FileText,
+} from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import {
@@ -62,7 +78,7 @@ export default function Trends() {
 
   const isReady = connectionConfig !== null && session !== null
 
-  // --- Queries ---
+  // --- Existing Queries ---
   const { data: dailyData, isLoading: isDailyLoading, isError: isDailyError, error: dailyError, execute: refetchDaily } =
     useQuery<VisitTrend[]>({
       queryFn: useCallback(() => getDailyVisitTrend(connectionConfig!, session!.databaseType, startDate, endDate), [connectionConfig, session, startDate, endDate]),
@@ -90,6 +106,37 @@ export default function Trends() {
   const { data: monthlyData, isLoading: isMonthlyLoading } =
     useQuery<{ month: string; visitCount: number }[]>({
       queryFn: useCallback(() => getMonthlyVisitSummary(connectionConfig!, session!.databaseType), [connectionConfig, session]),
+      enabled: isReady,
+    })
+
+  // --- New Queries: Diagnosis, Medications, Death ---
+  const { data: topDiagnosesData, isLoading: isDiagnosesLoading } =
+    useQuery<{ icd10: string; diagnosisName: string; visitCount: number }[]>({
+      queryFn: useCallback(() => getTopDiagnoses(connectionConfig!, session!.databaseType, startDate, endDate), [connectionConfig, session, startDate, endDate]),
+      enabled: isReady,
+    })
+
+  const { data: topMedsData, isLoading: isMedsLoading } =
+    useQuery<{ drugName: string; totalQty: number; totalCost: number }[]>({
+      queryFn: useCallback(() => getTopMedications(connectionConfig!, session!.databaseType, startDate, endDate), [connectionConfig, session, startDate, endDate]),
+      enabled: isReady,
+    })
+
+  const { data: medCostSummary, isLoading: isMedCostLoading } =
+    useQuery<{ totalItems: number; totalCost: number; uniqueDrugs: number }>({
+      queryFn: useCallback(() => getMedicationCostSummary(connectionConfig!, session!.databaseType, startDate, endDate), [connectionConfig, session, startDate, endDate]),
+      enabled: isReady,
+    })
+
+  const { data: deathData, isLoading: isDeathLoading } =
+    useQuery<{ totalDeaths: number; thisYearDeaths: number; thisMonthDeaths: number }>({
+      queryFn: useCallback(() => getDeathSummary(connectionConfig!, session!.databaseType), [connectionConfig, session]),
+      enabled: isReady,
+    })
+
+  const { data: diagSummary, isLoading: isDiagSummaryLoading } =
+    useQuery<{ totalDiagnoses: number; uniqueCodes: number }>({
+      queryFn: useCallback(() => getDiagnosisSummary(connectionConfig!, session!.databaseType, startDate, endDate), [connectionConfig, session, startDate, endDate]),
       enabled: isReady,
     })
 
@@ -121,7 +168,7 @@ export default function Trends() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">แนวโน้มการเข้ารับบริการ</h1>
         <p className="text-sm text-muted-foreground">
-          วิเคราะห์จำนวนการเข้ารับบริการรายวัน รายสัปดาห์ และรายเดือน พร้อมสรุปแผนกยอดนิยม
+          วิเคราะห์จำนวนการเข้ารับบริการรายวัน รายสัปดาห์ และรายเดือน พร้อมสรุปแผนกยอดนิยม การวินิจฉัย ค่ายา และสถิติการเสียชีวิต
         </p>
       </div>
 
@@ -134,17 +181,19 @@ export default function Trends() {
         </div>
       )}
 
-      {/* 2. Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 2. Summary Cards — expanded from 4 to 6 */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'จำนวนการเข้ารับบริการทั้งหมด', value: trendSummary.totalVisits, icon: TrendingUp, color: 'blue' },
-          { label: 'เฉลี่ยต่อวัน', value: trendSummary.avgDailyVisits, icon: BarChart3, color: 'green' },
-          { label: 'วันที่มีผู้เข้ารับบริการมากที่สุด', value: trendSummary.peakDay?.count ?? 0, sub: trendSummary.peakDay?.date, icon: ArrowUp, color: 'amber' },
-          { label: 'จำนวนวันที่มีบริการ', value: `${trendSummary.daysWithVisits} / ${trendSummary.totalDays}`, icon: CalendarCheck, color: 'purple' },
+          { label: 'จำนวนการเข้ารับบริการทั้งหมด', value: trendSummary.totalVisits, icon: TrendingUp, color: 'blue', loading: isDailyLoading },
+          { label: 'เฉลี่ยต่อวัน', value: trendSummary.avgDailyVisits, icon: BarChart3, color: 'green', loading: isDailyLoading },
+          { label: 'วันที่มีผู้เข้ารับบริการมากที่สุด', value: trendSummary.peakDay?.count ?? 0, sub: trendSummary.peakDay?.date, icon: ArrowUp, color: 'amber', loading: isDailyLoading },
+          { label: 'จำนวนวันที่มีบริการ', value: `${trendSummary.daysWithVisits} / ${trendSummary.totalDays}`, icon: CalendarCheck, color: 'purple', loading: isDailyLoading },
+          { label: 'จำนวนการวินิจฉัย', value: diagSummary?.totalDiagnoses ?? 0, sub: `${diagSummary?.uniqueCodes ?? 0} รหัส ICD10`, icon: Stethoscope, color: 'teal', loading: isDiagSummaryLoading },
+          { label: 'ค่ายาทั้งหมด', value: `฿${(medCostSummary?.totalCost ?? 0).toLocaleString()}`, icon: Banknote, color: 'orange', loading: isMedCostLoading },
         ].map((card) => (
           <Card key={card.label} className="card-shadow-hover p-4">
             <CardContent className="p-0 flex items-center gap-3">
-              {isDailyLoading ? <Skeleton className="h-16 w-full" /> : (
+              {card.loading ? <Skeleton className="h-16 w-full" /> : (
                 <>
                   <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-${card.color}-100 text-${card.color}-600 dark:bg-${card.color}-900/30 dark:text-${card.color}-400`}>
                     <card.icon className="h-5 w-5" />
@@ -223,7 +272,7 @@ export default function Trends() {
           </CardContent>
         </Card>
 
-        {/* Top departments — HORIZONTAL BAR (keep as bar — best for ranking) */}
+        {/* Top departments — HORIZONTAL BAR */}
         <Card className="card-shadow">
           <CardHeader>
             <CardTitle className="text-sm font-medium">แผนกยอดนิยม</CardTitle>
@@ -242,6 +291,133 @@ export default function Trends() {
                     contentStyle={tooltipStyle}
                   />
                   <Bar dataKey="visitCount" fill="hsl(var(--chart-4))" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 7. กลุ่มโรคที่พบบ่อย — Top Diagnoses Horizontal Bar */}
+      <Card className="card-shadow">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            กลุ่มโรคที่พบบ่อย
+          </CardTitle>
+          <CardDescription>10 กลุ่มโรค (ICD10) ที่มีการวินิจฉัยมากที่สุดในช่วงเวลาที่เลือก</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isDiagnosesLoading ? <Skeleton className="h-[400px] w-full" /> :
+           !topDiagnosesData || topDiagnosesData.length === 0 ? <EmptyState title="ไม่มีข้อมูลการวินิจฉัย" /> : (
+            <ResponsiveContainer width="100%" height={Math.max(300, topDiagnosesData.length * 45)}>
+              <BarChart data={topDiagnosesData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis
+                  dataKey="diagnosisName"
+                  type="category"
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={200}
+                  tickFormatter={(value: string) => value.length > 30 ? `${value.slice(0, 30)}...` : value}
+                />
+                <Tooltip
+                  formatter={((value: unknown) => [Number(value).toLocaleString(), 'ครั้ง']) as never}
+                  labelFormatter={(label: unknown) => String(label)}
+                  contentStyle={tooltipStyle}
+                />
+                <Bar dataKey="visitCount" fill="hsl(var(--chart-1))" radius={[0, 6, 6, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 8. ค่าใช้จ่ายยาและเวชภัณฑ์ — Medication Costs */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: 3 mini stat cards */}
+        <div className="flex flex-col gap-4">
+          {[
+            {
+              label: 'จำนวนรายการยา',
+              value: (medCostSummary?.totalItems ?? 0).toLocaleString(),
+              icon: Pill,
+              color: 'blue',
+            },
+            {
+              label: 'ค่ายาทั้งหมด',
+              value: `฿${(medCostSummary?.totalCost ?? 0).toLocaleString()} บาท`,
+              icon: Banknote,
+              color: 'orange',
+            },
+            {
+              label: 'ชนิดยาที่ใช้',
+              value: (medCostSummary?.uniqueDrugs ?? 0).toLocaleString(),
+              icon: Package,
+              color: 'purple',
+            },
+          ].map((stat) => (
+            <Card key={stat.label} className="card-shadow-hover p-4">
+              <CardContent className="p-0 flex items-center gap-3">
+                {isMedCostLoading ? <Skeleton className="h-14 w-full" /> : (
+                  <>
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-${stat.color}-100 text-${stat.color}-600 dark:bg-${stat.color}-900/30 dark:text-${stat.color}-400`}>
+                      <stat.icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground truncate">{stat.label}</p>
+                      <p className="text-lg font-bold">{stat.value}</p>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Right: Top 10 medications by cost — Horizontal Bar */}
+        <Card className="card-shadow lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Pill className="h-4 w-4" />
+              ยาที่มีค่าใช้จ่ายสูงสุด
+            </CardTitle>
+            <CardDescription>10 รายการยาที่มีมูลค่าการใช้สูงสุดในช่วงเวลาที่เลือก</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isMedsLoading ? <Skeleton className="h-[350px] w-full" /> :
+             !topMedsData || topMedsData.length === 0 ? <EmptyState title="ไม่มีข้อมูลค่ายา" /> : (
+              <ResponsiveContainer width="100%" height={Math.max(300, topMedsData.length * 40)}>
+                <BarChart data={topMedsData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                    tickFormatter={(value: number) => value.toLocaleString()}
+                  />
+                  <YAxis
+                    dataKey="drugName"
+                    type="category"
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={180}
+                    tickFormatter={(value: string) => value.length > 25 ? `${value.slice(0, 25)}...` : value}
+                  />
+                  <Tooltip
+                    formatter={((value: unknown, name: unknown) => {
+                      if (String(name) === 'totalCost') return [`${Number(value).toLocaleString()} บาท`, 'ค่าใช้จ่าย']
+                      return [Number(value).toLocaleString(), String(name)]
+                    }) as never}
+                    labelFormatter={(label: unknown) => String(label)}
+                    contentStyle={tooltipStyle}
+                  />
+                  <Bar dataKey="totalCost" fill="hsl(var(--chart-3))" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -285,6 +461,33 @@ export default function Trends() {
                 <Line type="monotone" dataKey="visitCount" stroke="hsl(var(--chart-5))" strokeWidth={2.5} dot={{ r: 5, fill: 'hsl(var(--chart-5))', strokeWidth: 2, stroke: 'white' }} activeDot={{ r: 7, strokeWidth: 2 }} />
               </LineChart>
             </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 9. สถิติการเสียชีวิต — Death Statistics */}
+      <Card className="card-shadow bg-muted/30">
+        <CardHeader>
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <HeartPulse className="h-4 w-4 text-muted-foreground" />
+            สถิติการเสียชีวิต
+          </CardTitle>
+          <CardDescription>ข้อมูลสรุปจำนวนผู้เสียชีวิตจากฐานข้อมูล</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isDeathLoading ? <Skeleton className="h-20 w-full" /> : (
+            <div className="grid grid-cols-3 gap-6">
+              {[
+                { label: 'จำนวนทั้งหมด', value: deathData?.totalDeaths ?? 0 },
+                { label: 'ปีนี้', value: deathData?.thisYearDeaths ?? 0 },
+                { label: 'เดือนนี้', value: deathData?.thisMonthDeaths ?? 0 },
+              ].map((item) => (
+                <div key={item.label} className="text-center">
+                  <p className="text-xs text-muted-foreground mb-1">{item.label}</p>
+                  <p className="text-2xl font-bold text-muted-foreground">{item.value.toLocaleString()}</p>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
