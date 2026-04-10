@@ -86,3 +86,26 @@ export function getDateRange(days: number): { startDate: string; endDate: string
 export function getRelativeDate(days: number): Date {
   return subDays(new Date(), days);
 }
+
+/**
+ * Returns the start and end dates of the current Thai fiscal year.
+ *
+ * The Thai fiscal year runs from October 1 to September 30.
+ * e.g. FY 2569 = 2025-10-01 to 2026-09-30
+ *
+ * @returns An object with `startDate` and `endDate` in `'yyyy-MM-dd'` format.
+ */
+export function getFiscalYearRange(): { startDate: string; endDate: string } {
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1-12
+  const year = now.getFullYear();
+
+  // If we are in Oct-Dec, fiscal year started this year; otherwise started last year
+  const fiscalStartYear = month >= 10 ? year : year - 1;
+  const fiscalEndYear = fiscalStartYear + 1;
+
+  return {
+    startDate: `${fiscalStartYear}-10-01`,
+    endDate: `${fiscalEndYear}-09-30`,
+  };
+}

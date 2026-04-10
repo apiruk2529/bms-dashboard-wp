@@ -753,3 +753,405 @@ export async function getDiagnosisSummary(
   }));
   return rows[0] ?? { totalDiagnoses: 0, uniqueCodes: 0 };
 }
+
+// ---------------------------------------------------------------------------
+// Geographic Setup (Address Filters)
+// ---------------------------------------------------------------------------
+
+export interface AddressFilter {
+  chwpart?: string
+  amppart?: string
+  tmbpart?: string
+  moopart?: string[]
+}
+
+function buildAddressCondition(ptAlias: string, filter?: AddressFilter): string {
+  if (!filter) return '';
+  let cond = '';
+  if (filter.chwpart) cond += ` AND ${ptAlias}.chwpart = '${filter.chwpart}'`;
+  if (filter.amppart) cond += ` AND ${ptAlias}.amppart = '${filter.amppart}'`;
+  if (filter.tmbpart) cond += ` AND ${ptAlias}.tmbpart = '${filter.tmbpart}'`;
+  if (filter.moopart && filter.moopart.length > 0) {
+    const mooList = filter.moopart.map(m => `'${m}'`).join(',');
+    cond += ` AND ${ptAlias}.moopart IN (${mooList})`;
+  }
+  return cond;
+}
+
+export interface AreaInfo {
+  code: string
+  name: string
+}
+
+export async function getProvinces(config: ConnectionConfig): Promise<AreaInfo[]> {
+  const sql = `SELECT chwpart as code, name FROM thaiaddress WHERE amppart='00' AND tmbpart='00' ORDER BY name`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({ code: String(row['code'] ?? ''), name: String(row['name'] ?? '') }));
+}
+
+export async function getAmphurs(config: ConnectionConfig, chwpart: string): Promise<AreaInfo[]> {
+  const sql = `SELECT amppart as code, name FROM thaiaddress WHERE chwpart='${chwpart}' AND amppart<>'00' AND tmbpart='00' ORDER BY name`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({ code: String(row['code'] ?? ''), name: String(row['name'] ?? '') }));
+}
+
+export async function getTambons(config: ConnectionConfig, chwpart: string, amppart: string): Promise<AreaInfo[]> {
+  const sql = `SELECT tmbpart as code, name FROM thaiaddress WHERE chwpart='${chwpart}' AND amppart='${amppart}' AND tmbpart<>'00' ORDER BY name`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({ code: String(row['code'] ?? ''), name: String(row['name'] ?? '') }));
+}
+
+export async function getVillages(config: ConnectionConfig, chwpart: string, amppart: string, tmbpart: string): Promise<AreaInfo[]> {
+  const addressId = `${chwpart}${amppart}${tmbpart}`;
+  const sql = `SELECT village_moo as code, village_name as name FROM village WHERE address_id='${addressId}' ORDER BY ABS(village_moo)`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({ code: String(row['code'] ?? ''), name: String(row['name'] ?? '') }));
+}
+
+// ---------------------------------------------------------------------------
+// Top 20 Disease Rankings (OPD, IPD, Refer)
+// ---------------------------------------------------------------------------
+
+export interface Top20OpdDisease {
+  icd10: string
+  name: string
+  hn: number
+  vn: number
+}
+
+export interface Top20IpdDisease {
+  pdx: string
+  icdname: string
+  pdxCount: number
+}
+
+export interface Top20ReferDisease {
+  pdx: string
+  icd10name: string
+  ct: number
+  ctHn: number
+  referOpd: number
+  referEr: number
+  referIpd: number
+}
+
+/**
+ * Top 20 OPD diagnoses by visit count (VN) for a date range.
+ * Excludes Z-codes and null ICD codes.
+ */
+export async function getTop20OpdDiseases(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+  addressFilter?: AddressFilter,
+): Promise<Top20OpdDisease[]> {
+  const addressCond = buildAddressCondition('pt', addressFilter);
+  const sql =
+    `SELECT o.icd10, i.name, COUNT(DISTINCT o.hn) as HN, COUNT(o.vn) as VN ` +
+    `FROM ovstdiag o ` +
+    `INNER JOIN patient pt ON o.hn = pt.hn ` +
+    `LEFT JOIN icd101 i ON o.icd10 = i.code ` +
+    `WHERE o.vstdate BETWEEN '${startDate}' AND '${endDate}' ` +
+    `AND i.code IS NOT NULL AND o.icd10 NOT LIKE 'Z%' ` +
+    `${addressCond} ` +
+    `GROUP BY i.code ` +
+    `ORDER BY VN DESC ` +
+    `LIMIT 20`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    icd10: String(row['icd10'] ?? ''),
+    name: String(row['name'] ?? ''),
+    hn: Number(row['HN'] ?? 0),
+    vn: Number(row['VN'] ?? 0),
+  }));
+}
+
+/**
+ * Top 20 IPD diagnoses by discharge count for a date range.
+ */
+export async function getTop20IpdDiseases(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+  addressFilter?: AddressFilter,
+): Promise<Top20IpdDisease[]> {
+  const addressCond = buildAddressCondition('pt', addressFilter);
+  const joinPatient = addressCond ? `INNER JOIN patient pt ON v.hn = pt.hn ` : '';
+  const sql =
+    `SELECT v.pdx, COUNT(v.pdx) as pdx_count, i.name as icdname ` +
+    `FROM an_stat v ` +
+    `${joinPatient}` +
+    `LEFT JOIN icd101 i ON i.code = v.pdx ` +
+    `WHERE v.dchdate BETWEEN '${startDate}' AND '${endDate}' ` +
+    `AND v.pdx IS NOT NULL AND v.pdx <> '' ` +
+    `${addressCond} ` +
+    `GROUP BY v.pdx, i.name ` +
+    `ORDER BY pdx_count DESC ` +
+    `LIMIT 20`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    pdx: String(row['pdx'] ?? ''),
+    icdname: String(row['icdname'] ?? ''),
+    pdxCount: Number(row['pdx_count'] ?? 0),
+  }));
+}
+
+/**
+ * Top 20 Refer-out diagnoses by case count for a date range.
+ */
+export async function getTop20ReferDiseases(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+  addressFilter?: AddressFilter,
+): Promise<Top20ReferDisease[]> {
+  const addressCond = buildAddressCondition('pt', addressFilter);
+  const joinPatient = addressCond ? `INNER JOIN patient pt ON ro.hn = pt.hn ` : '';
+  const sql =
+    `SELECT ro.pdx, i10.name AS ICD10, ` +
+    `COUNT(ro.vn) AS ct, COUNT(DISTINCT(ro.hn)) AS ct_hn, ` +
+    `SUM(IF(ro.refer_point='OPD',1,0)) AS refer_opd, ` +
+    `SUM(IF(ro.refer_point='ER',1,0)) AS refer_ER, ` +
+    `SUM(IF(ro.refer_point='IPD',1,0)) AS refer_IPD ` +
+    `FROM referout ro ` +
+    `INNER JOIN vn_stat v ON ro.vn = v.vn ` +
+    `${joinPatient}` +
+    `LEFT JOIN icd101 i10 ON ro.pdx = i10.code ` +
+    `LEFT JOIN kskdepartment k ON ro.depcode = k.depcode ` +
+    `WHERE ro.refer_date BETWEEN '${startDate}' AND '${endDate}' ` +
+    `${addressCond} ` +
+    `GROUP BY ro.pdx ` +
+    `ORDER BY ct DESC ` +
+    `LIMIT 20`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    pdx: String(row['pdx'] ?? ''),
+    icd10name: String(row['ICD10'] ?? ''),
+    ct: Number(row['ct'] ?? 0),
+    ctHn: Number(row['ct_hn'] ?? 0),
+    referOpd: Number(row['refer_opd'] ?? 0),
+    referEr: Number(row['refer_ER'] ?? 0),
+    referIpd: Number(row['refer_IPD'] ?? 0),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Region-based Refer Overview
+// ---------------------------------------------------------------------------
+
+export interface HospitalRegionInfo {
+  chwpart: string
+  zone_code: string
+}
+
+export interface ReferRegionDisease {
+  pdx: string
+  icd10name: string
+  ct: number
+  referOpd: number
+  referEr: number
+  referIpd: number
+}
+
+/**
+ * Get the hospital's province (chwpart) and health zone (zone_code).
+ * Joins opdconfig with hospcode and changwat.
+ */
+export async function getHospitalRegionInfo(
+  config: ConnectionConfig,
+): Promise<HospitalRegionInfo | null> {
+  try {
+    const sql =
+      `SELECT h.chwpart, h.region_id ` +
+      `FROM opdconfig o ` +
+      `LEFT JOIN hospcode h ON h.hospcode = o.hospitalcode ` +
+      `LEFT JOIN thaiaddress t ON t.chwpart = h.chwpart ` +
+      `LIMIT 1`;
+    const response = await executeSqlViaApi(sql, config);
+    const rows = parseQueryResponse(response, (row) => ({
+      chwpart: String(row['chwpart'] ?? ''),
+      zone_code: String(row['region_id'] ?? ''),
+    }));
+    
+    if (rows.length > 0 && rows[0].chwpart) {
+      return rows[0];
+    }
+  } catch (err) {
+    console.error('Error fetching full hospital region info via thaiaddress', err);
+  }
+
+  // Fallback in case changwat doesn't exist or query failed
+  try {
+    const sql =
+      `SELECT h.chwpart ` +
+      `FROM opdconfig o ` +
+      `LEFT JOIN hospcode h ON h.hospcode = o.hospitalcode ` +
+      `LIMIT 1`;
+    const response = await executeSqlViaApi(sql, config);
+    const rows = parseQueryResponse(response, (row) => ({
+      chwpart: String(row['chwpart'] ?? ''),
+      zone_code: '', // Cannot determine zone code
+    }));
+    return rows[0] ?? null;
+  } catch (err) {
+    console.error('Error fetching minimal hospital region info', err);
+    return null;
+  }
+}
+
+/**
+ * Top 5 Refer-out diseases by region type for a date range.
+ * regionType:
+ *  - 'IN_PROVINCE': h.chwpart = hospitalChwpart
+ *  - 'IN_ZONE': h.chwpart <> hospitalChwpart AND c.zone_code = hospitalZoneCode
+ *  - 'OUT_ZONE': c.zone_code <> hospitalZoneCode OR c.zone_code IS NULL
+ */
+export async function getTopReferDiseasesByRegion(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+  regionType: 'IN_PROVINCE' | 'IN_ZONE' | 'OUT_ZONE',
+  hospitalChwpart: string,
+  hospitalZoneCode: string,
+  patientType: 'ALL' | 'OPD' | 'IPD' = 'ALL',
+): Promise<ReferRegionDisease[]> {
+  let regionCondition = '';
+  if (regionType === 'IN_PROVINCE') {
+    regionCondition = `h.chwpart = '${hospitalChwpart}'`;
+  } else if (regionType === 'IN_ZONE') {
+    regionCondition = `h.chwpart <> '${hospitalChwpart}' AND h.region_id = '${hospitalZoneCode}'`;
+  } else if (regionType === 'OUT_ZONE') {
+    regionCondition = `(h.region_id <> '${hospitalZoneCode}' OR h.region_id IS NULL)`;
+  }
+
+  const sql =
+    `SELECT ro.pdx, i10.name AS ICD10, ` +
+    `COUNT(ro.vn) AS ct, ` +
+    `SUM(IF(ro.refer_point='OPD',1,0)) AS refer_opd, ` +
+    `SUM(IF(ro.refer_point='ER',1,0)) AS refer_ER, ` +
+    `SUM(IF(ro.refer_point='IPD',1,0)) AS refer_IPD ` +
+    `FROM referout ro ` +
+    `LEFT JOIN hospcode h ON ro.hospcode = h.hospcode ` +
+    `LEFT JOIN icd101 i10 ON ro.pdx = i10.code ` +
+    `WHERE ro.refer_date BETWEEN '${startDate}' AND '${endDate}' ` +
+    `AND ${regionCondition} ` +
+    (patientType === 'OPD' ? `AND ro.refer_point IN ('OPD', 'ER') ` : '') +
+    (patientType === 'IPD' ? `AND ro.refer_point = 'IPD' ` : '') +
+    `GROUP BY ro.pdx, i10.name ` +
+    `ORDER BY ct DESC ` +
+    `LIMIT 5`;
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    pdx: String(row['pdx'] ?? ''),
+    icd10name: String(row['ICD10'] ?? ''),
+    ct: Number(row['ct'] ?? 0),
+    referOpd: Number(row['refer_opd'] ?? 0),
+    referEr: Number(row['refer_ER'] ?? 0),
+    referIpd: Number(row['refer_IPD'] ?? 0),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Refer Summary Counts
+// ---------------------------------------------------------------------------
+
+export interface ReferSummaryCounts {
+  inProvince: number
+  inZone: number
+  outZone: number
+  total: number
+}
+
+export async function getReferSummaryCounts(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+  hospitalChwpart: string,
+  hospitalZoneCode: string,
+  patientType: 'ALL' | 'OPD' | 'IPD' = 'ALL',
+): Promise<ReferSummaryCounts> {
+  const patientCondition = 
+    patientType === 'OPD' ? `AND ro.refer_point IN ('OPD', 'ER') ` :
+    patientType === 'IPD' ? `AND ro.refer_point = 'IPD' ` : '';
+
+  const sql =
+    `SELECT ` +
+    `SUM(IF(h.chwpart = '${hospitalChwpart}', 1, 0)) as in_province, ` +
+    `SUM(IF(h.chwpart <> '${hospitalChwpart}' AND h.region_id = '${hospitalZoneCode}', 1, 0)) as in_zone, ` +
+    `SUM(IF(h.region_id <> '${hospitalZoneCode}' OR h.region_id IS NULL, 1, 0)) as out_zone ` +
+    `FROM referout ro ` +
+    `LEFT JOIN hospcode h ON ro.hospcode = h.hospcode ` +
+    `WHERE ro.refer_date BETWEEN '${startDate}' AND '${endDate}' ` +
+    `${patientCondition}`;
+    
+  const response = await executeSqlViaApi(sql, config);
+  let inProv = 0, inZn = 0, outZn = 0;
+  if (response.data && response.data.length > 0) {
+    const row = response.data[0];
+    inProv = Number(row['in_province'] ?? 0);
+    inZn = Number(row['in_zone'] ?? 0);
+    outZn = Number(row['out_zone'] ?? 0);
+  }
+  return {
+    inProvince: inProv,
+    inZone: inZn,
+    outZone: outZn,
+    total: inProv + inZn + outZn
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Refer Trend
+// ---------------------------------------------------------------------------
+
+export interface ReferTrendData {
+  date: string
+  referOpd: number
+  referEr: number
+  referIpd: number
+  total: number
+}
+
+export async function getReferTrend(
+  config: ConnectionConfig,
+  dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+  patientType: 'ALL' | 'OPD' | 'IPD' = 'ALL',
+): Promise<ReferTrendData[]> {
+  const dateExpr = queryBuilder.dateFormat(dbType, 'ro.refer_date', '%Y-%m-%d');
+  
+  const patientCondition = 
+    patientType === 'OPD' ? `AND ro.refer_point IN ('OPD', 'ER') ` :
+    patientType === 'IPD' ? `AND ro.refer_point = 'IPD' ` : '';
+
+  const sql =
+    `SELECT ${dateExpr} as refer_date, ` +
+    `SUM(IF(ro.refer_point='OPD', 1, 0)) as refer_opd, ` +
+    `SUM(IF(ro.refer_point='ER', 1, 0)) as refer_er, ` +
+    `SUM(IF(ro.refer_point='IPD', 1, 0)) as refer_ipd ` +
+    `FROM referout ro ` +
+    `WHERE ro.refer_date BETWEEN '${startDate}' AND '${endDate}' ` +
+    `${patientCondition}` +
+    `GROUP BY ${dateExpr} ` +
+    `ORDER BY refer_date ASC`;
+
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => {
+    const referOpd = Number(row['refer_opd'] ?? 0);
+    const referEr = Number(row['refer_er'] ?? 0);
+    const referIpd = Number(row['refer_ipd'] ?? 0);
+    return {
+      date: String(row['refer_date'] ?? ''),
+      referOpd,
+      referEr,
+      referIpd,
+      total: referOpd + referEr + referIpd,
+    };
+  });
+}

@@ -10,8 +10,11 @@ import {
   Building2,
   LayoutDashboard,
   LogOut,
+  Stethoscope,
   TrendingUp,
   Users,
+  Ambulance,
+  HeartPulse,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -30,6 +33,9 @@ const NAV_TABS: NavTab[] = [
   { label: 'แนวโน้ม', path: '/trends', icon: TrendingUp },
   { label: 'แผนก', path: '/departments', icon: Building2 },
   { label: 'ข้อมูลประชากร', path: '/demographics', icon: Users },
+  { label: '20 อันดับโรค', path: '/top-diseases', icon: Stethoscope },
+  { label: 'NCDs ภาพรวม', path: '/ncd-dashboard', icon: HeartPulse },
+  { label: 'ภาพรวม refer', path: '/refer-overview', icon: Ambulance },
 ];
 
 // ---------------------------------------------------------------------------

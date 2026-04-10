@@ -1,21 +1,21 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import { EmptyState } from '@/components/dashboard/EmptyState'
 
 describe('EmptyState', () => {
   it('MUST render title', () => {
-    render(<EmptyState title="No data found" />)
-    expect(screen.getByText('No data found')).toBeInTheDocument()
+    const { getByText } = render(<EmptyState title="No data found" />)
+    expect(getByText('No data found')).toBeInTheDocument()
   })
 
   it('MUST render description when provided', () => {
-    render(
+    const { getByText } = render(
       <EmptyState
         title="No data"
         description="Try expanding the date range."
       />
     )
-    expect(screen.getByText('Try expanding the date range.')).toBeInTheDocument()
+    expect(getByText('Try expanding the date range.')).toBeInTheDocument()
   })
 
   it('MUST NOT render description when not provided', () => {
@@ -25,23 +25,23 @@ describe('EmptyState', () => {
   })
 
   it('MUST render action button when provided', () => {
-    render(
+    const { getByRole } = render(
       <EmptyState
         title="Error"
         action={<button>Retry</button>}
       />
     )
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 
   it('MUST render custom icon when provided', () => {
-    render(
+    const { getByTestId } = render(
       <EmptyState
         title="Empty"
         icon={<span data-testid="custom-icon">icon</span>}
       />
     )
-    expect(screen.getByTestId('custom-icon')).toBeInTheDocument()
+    expect(getByTestId('custom-icon')).toBeInTheDocument()
   })
 
   it('MUST apply custom className', () => {

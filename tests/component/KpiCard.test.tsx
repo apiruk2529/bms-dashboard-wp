@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 
 describe('KpiCard', () => {
   it('MUST render title and formatted value when loaded', () => {
-    render(
+    const { getByText } = render(
       <KpiCard
         title="OPD Visits"
         value={1234}
@@ -13,12 +13,12 @@ describe('KpiCard', () => {
         isError={false}
       />
     )
-    expect(screen.getByText('OPD Visits')).toBeInTheDocument()
-    expect(screen.getByText('1,234')).toBeInTheDocument()
+    expect(getByText('OPD Visits')).toBeInTheDocument()
+    expect(getByText('1,234')).toBeInTheDocument()
   })
 
   it('MUST render description when provided', () => {
-    render(
+    const { getByText } = render(
       <KpiCard
         title="OPD Visits"
         value={100}
@@ -27,7 +27,7 @@ describe('KpiCard', () => {
         description="Today's outpatient visits"
       />
     )
-    expect(screen.getByText("Today's outpatient visits")).toBeInTheDocument()
+    expect(getByText("Today's outpatient visits")).toBeInTheDocument()
   })
 
   it('MUST show skeleton placeholders when loading', () => {
@@ -45,7 +45,7 @@ describe('KpiCard', () => {
 
   it('MUST show error message and retry button when error', async () => {
     const onRetry = vi.fn()
-    render(
+    const { getByText, getByRole } = render(
       <KpiCard
         title="OPD Visits"
         value={null}
@@ -55,15 +55,15 @@ describe('KpiCard', () => {
         onRetry={onRetry}
       />
     )
-    expect(screen.getByText('Connection failed')).toBeInTheDocument()
+    expect(getByText('Connection failed')).toBeInTheDocument()
 
-    const retryButton = screen.getByRole('button', { name: /ลองอีกครั้ง|retry/i })
+    const retryButton = getByRole('button', { name: /ลองอีกครั้ง|retry/i })
     await userEvent.click(retryButton)
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
   it('MUST display zero correctly', () => {
-    render(
+    const { getByText } = render(
       <KpiCard
         title="ER Visits"
         value={0}
@@ -71,11 +71,11 @@ describe('KpiCard', () => {
         isError={false}
       />
     )
-    expect(screen.getByText('0')).toBeInTheDocument()
+    expect(getByText('0')).toBeInTheDocument()
   })
 
   it('MUST format large numbers with locale separators', () => {
-    render(
+    const { getByText } = render(
       <KpiCard
         title="Patients"
         value={1000000}
@@ -83,6 +83,6 @@ describe('KpiCard', () => {
         isError={false}
       />
     )
-    expect(screen.getByText('1,000,000')).toBeInTheDocument()
+    expect(getByText('1,000,000')).toBeInTheDocument()
   })
 })
