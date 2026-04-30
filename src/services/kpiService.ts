@@ -1155,3 +1155,52 @@ export async function getReferTrend(
     };
   });
 }
+
+// ---------------------------------------------------------------------------
+// Refer Out-of-zone Details
+// ---------------------------------------------------------------------------
+
+export interface ReferOutZoneDetail {
+  hospcode: string
+  hospname: string
+  pdx: string
+  icd10name: string
+  count: number
+}
+
+/**
+ * Get detailed Refer-out data for hospitals outside the health zone, 
+ * grouped by hospital and disease group.
+ */
+export async function getReferOutZoneDetail(
+  config: ConnectionConfig,
+  _dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+  hospitalZoneCode: string,
+  patientType: 'ALL' | 'OPD' | 'IPD' = 'ALL',
+): Promise<ReferOutZoneDetail[]> {
+  const patientCondition = 
+    patientType === 'OPD' ? `AND ro.refer_point IN ('OPD', 'ER') ` :
+    patientType === 'IPD' ? `AND ro.refer_point = 'IPD' ` : '';
+
+  const sql =
+    `SELECT ro.hospcode, h.name as hospname, ro.pdx, i10.name as icd10name, COUNT(ro.vn) as ct ` +
+    `FROM referout ro ` +
+    `LEFT JOIN hospcode h ON ro.hospcode = h.hospcode ` +
+    `LEFT JOIN icd101 i10 ON ro.pdx = i10.code ` +
+    `WHERE ro.refer_date BETWEEN '${startDate}' AND '${endDate}' ` +
+    `AND (h.region_id <> '${hospitalZoneCode}' OR h.region_id IS NULL) ` +
+    `${patientCondition} ` +
+    `GROUP BY ro.hospcode, h.name, ro.pdx, i10.name ` +
+    `ORDER BY ct DESC`;
+
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => ({
+    hospcode: String(row['hospcode'] ?? ''),
+    hospname: String(row['hospname'] ?? 'ไม่ระบุ'),
+    pdx: String(row['pdx'] ?? ''),
+    icd10name: String(row['icd10name'] ?? ''),
+    count: Number(row['ct'] ?? 0),
+  }));
+}

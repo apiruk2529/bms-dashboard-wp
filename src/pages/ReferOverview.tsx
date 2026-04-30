@@ -10,12 +10,14 @@ import {
   getTopReferDiseasesByRegion,
   getReferSummaryCounts,
   getReferTrend,
+  getReferOutZoneDetail,
 } from '@/services/kpiService'
 import type {
   ReferRegionDisease,
   HospitalRegionInfo,
   ReferSummaryCounts,
-  ReferTrendData
+  ReferTrendData,
+  ReferOutZoneDetail,
 } from '@/services/kpiService'
 import {
   ResponsiveContainer,
@@ -39,7 +41,7 @@ import {
 } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner'
 import { KpiCard } from '@/components/dashboard/KpiCard'
-import { Activity, MapPin, Ambulance, ExternalLink } from 'lucide-react'
+import { Activity, MapPin, Ambulance, ExternalLink, X } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
 // Helper: Rank badge
@@ -172,6 +174,172 @@ function ReferRegionTable({
 }
 
 // ---------------------------------------------------------------------------
+// Refer Out-of-zone Rank Table Component
+// ---------------------------------------------------------------------------
+
+function ReferOutZoneRankTable({
+  data,
+  isLoading,
+  onSelectHosp,
+}: {
+  data: any[]
+  isLoading: boolean
+  onSelectHosp: (hosp: any) => void
+}) {
+  return (
+    <Card className="h-full flex flex-col">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <ExternalLink className="h-5 w-5" />
+          <span>Refer นอกเขตสุขภาพ แยกหน่วยบริการและกลุ่มโรค (เรียงตามจำนวนครั้งส่งต่อ)</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0 flex-1">
+        {data.length === 0 ? (
+          <TablePlaceholder isLoading={isLoading} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-3 w-12">#</th>
+                  <th className="px-4 py-3 min-w-[180px]">หน่วยสถานบริการ</th>
+                  <th className="px-4 py-3 text-center">จำนวนกลุ่มโรค</th>
+                  <th className="px-4 py-3 text-right">จำนวนครั้งรวม</th>
+                  <th className="px-4 py-3">รายละเอียดกลุ่มโรค (5 อันดับแรก)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((hosp, i) => (
+                  <tr
+                    key={`${hosp.hospcode}-${i}`}
+                    className="border-b transition-colors hover:bg-muted/30 last:border-0"
+                  >
+                    <td className="px-4 py-3">
+                      <RankBadge rank={i + 1} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => onSelectHosp(hosp)}
+                        className="text-left font-semibold text-blue-700 hover:text-blue-900 hover:underline transition-all flex items-center gap-1 group"
+                      >
+                        <span>{hosp.hospname}</span>
+                        <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="inline-flex items-center justify-center bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded-full text-xs font-bold border border-orange-200">
+                        {hosp.diseaseCount}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-slate-700">
+                      {hosp.totalCount.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {hosp.diseases.slice(0, 5).map((d: any, idx: number) => (
+                          <span
+                            key={idx}
+                            title={d.icd10name}
+                            className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] border border-slate-200"
+                          >
+                            <span className="font-mono font-bold text-slate-500">{d.pdx}</span>
+                            <span className="bg-white/50 px-1 rounded font-medium">{d.count}</span>
+                          </span>
+                        ))}
+                        {hosp.diseases.length > 5 && (
+                          <span className="text-[10px] text-muted-foreground self-center italic">
+                            ... อีก {hosp.diseases.length - 5} รายการ
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Drill-down Modal Component
+// ---------------------------------------------------------------------------
+
+function DrillDownModal({
+  hospname,
+  diseases,
+  onClose,
+}: {
+  hospname: string
+  diseases: any[]
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm transition-all animate-in fade-in duration-200">
+      <Card className="w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border-none">
+        <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20 py-4">
+          <div>
+            <CardTitle className="text-xl font-bold text-blue-700">
+              {hospname}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">รายละเอียดกลุ่มโรคที่ส่งต่อ (รวมทั้งหมด)</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-muted rounded-full transition-colors"
+            title="ปิด"
+          >
+            <X className="h-6 w-6 text-muted-foreground" />
+          </button>
+        </CardHeader>
+        <CardContent className="p-0 overflow-y-auto flex-1">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-background/95 backdrop-blur-sm shadow-sm z-10">
+              <tr className="text-left text-xs font-semibold uppercase text-muted-foreground border-b">
+                <th className="px-6 py-4 w-24">ICD10</th>
+                <th className="px-6 py-4">ชื่อโรค</th>
+                <th className="px-6 py-4 text-right">จำนวนครั้ง</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {diseases.map((d, i) => (
+                <tr key={`${d.pdx}-${i}`} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-6 py-3.5 font-mono font-bold text-slate-500">{d.pdx}</td>
+                  <td className="px-6 py-3.5 font-medium">{d.icd10name || '-'}</td>
+                  <td className="px-6 py-3.5 text-right font-bold text-orange-600">
+                    {d.count.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+        <div className="p-4 border-t bg-muted/5 flex justify-between items-center">
+          <div className="flex gap-4 items-center">
+            <span className="text-sm font-semibold text-slate-600">
+              รวมทั้งหมด: {diseases.reduce((acc, d) => acc + d.count, 0).toLocaleString()} ครั้ง
+            </span>
+            <span className="text-xs text-muted-foreground">
+              ({diseases.length} กลุ่มโรค)
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="bg-slate-900 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition-all shadow-sm"
+          >
+            ปิดหน้าต่าง
+          </button>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main page component
 // ---------------------------------------------------------------------------
 
@@ -185,6 +353,12 @@ export default function ReferOverview() {
 
   // Tab State
   const [patientType, setPatientType] = useState<'ALL' | 'OPD' | 'IPD'>('ALL')
+
+  // Drill-down State
+  const [selectedHosp, setSelectedHosp] = useState<{
+    hospname: string
+    diseases: ReferOutZoneDetail[]
+  } | null>(null)
 
   // Hospital Info State
   const [hospitalInfo, setHospitalInfo] = useState<HospitalRegionInfo | null>(null)
@@ -308,6 +482,54 @@ export default function ReferOverview() {
     enabled: canFetchData,
   })
 
+  // 6. Refer Out Zone Detail
+  const outZoneDetailQueryFn = useCallback(
+    () =>
+      getReferOutZoneDetail(
+        connectionConfig!,
+        session!.databaseType,
+        startDate,
+        endDate,
+        hospitalInfo!.zone_code,
+        patientType
+      ),
+    [connectionConfig, session, startDate, endDate, hospitalInfo, patientType]
+  )
+  const outZoneDetailQuery = useQuery<ReferOutZoneDetail[]>({
+    queryFn: outZoneDetailQueryFn,
+    enabled: canFetchData,
+  })
+
+  // Transform Out Zone Detail for Ranking
+  const rankedOutZoneData = useMemo(() => {
+    if (!outZoneDetailQuery.data) return []
+    
+    // Group by hospital
+    const hospGroups: Record<string, { hospcode: string, hospname: string, diseases: ReferOutZoneDetail[], totalCount: number }> = {}
+    
+    outZoneDetailQuery.data.forEach(item => {
+      if (!hospGroups[item.hospcode]) {
+        hospGroups[item.hospcode] = { 
+          hospcode: item.hospcode,
+          hospname: item.hospname, 
+          diseases: [], 
+          totalCount: 0 
+        }
+      }
+      hospGroups[item.hospcode].diseases.push(item)
+      hospGroups[item.hospcode].totalCount += item.count
+    })
+    
+    // Convert to array and calculate unique diseaseCount
+    const result = Object.values(hospGroups).map(group => ({
+      ...group,
+      diseaseCount: group.diseases.length
+    }))
+    
+    // Sort by totalCount DESC, then by diseaseCount DESC
+    return result.sort((a, b) => b.totalCount - a.totalCount || b.diseaseCount - a.diseaseCount)
+  }, [outZoneDetailQuery.data])
+
   // Date range handler
   const handleRangeChange = useCallback((start: string, end: string) => {
     setStartDate(start)
@@ -320,7 +542,8 @@ export default function ReferOverview() {
     inZoneQuery.isLoading ||
     outZoneQuery.isLoading ||
     summaryQuery.isLoading ||
-    trendQuery.isLoading
+    trendQuery.isLoading ||
+    outZoneDetailQuery.isLoading
 
   return (
     <div className="flex flex-col gap-6">
@@ -530,6 +753,24 @@ export default function ReferOverview() {
             />
           </div>
         </div>
+
+        {/* Refer Out-of-zone Rankings (Detailed) */}
+        <div className="grid grid-cols-1 gap-6">
+          <ReferOutZoneRankTable 
+            data={rankedOutZoneData}
+            isLoading={outZoneDetailQuery.isLoading}
+            onSelectHosp={setSelectedHosp}
+          />
+        </div>
+
+        {/* Drill-down Modal */}
+        {selectedHosp && (
+          <DrillDownModal
+            hospname={selectedHosp.hospname}
+            diseases={selectedHosp.diseases}
+            onClose={() => setSelectedHosp(null)}
+          />
+        )}
         </>
       )}
     </div>
