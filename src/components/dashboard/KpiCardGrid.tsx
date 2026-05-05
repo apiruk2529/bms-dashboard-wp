@@ -7,7 +7,7 @@ import { Activity, BedDouble, Siren, Building2 } from 'lucide-react'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { useBmsSessionContext } from '@/contexts/BmsSessionContext'
 import { useQuery } from '@/hooks/useQuery'
-import { getKpiSummary } from '@/services/kpiService'
+import { getKpiSummary } from '@/services/overviewService'
 
 export function KpiCardGrid() {
   const { connectionConfig, session } = useBmsSessionContext()

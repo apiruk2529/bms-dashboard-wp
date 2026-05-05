@@ -13,13 +13,13 @@ import {
   getAmphurs,
   getTambons,
   getVillages,
-} from '@/services/kpiService'
+} from '@/services/topDiseaseService'
 import type {
   Top20OpdDisease,
   Top20IpdDisease,
   Top20ReferDisease,
   AreaInfo,
-} from '@/services/kpiService'
+} from '@/services/topDiseaseService'
 import { getFiscalYearRange } from '@/utils/dateUtils'
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker'
 import { AddressFilter } from '@/components/dashboard/AddressFilter'

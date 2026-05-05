@@ -9,7 +9,7 @@ import {
   getGenderDistribution,
   getAgeGroupDistribution,
   getPatientTypeDistribution,
-} from '@/services/kpiService'
+} from '@/services/demographicsService'
 import { getDateRange } from '@/utils/dateUtils'
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker'
 import { GenderChart } from '@/components/charts/GenderChart'

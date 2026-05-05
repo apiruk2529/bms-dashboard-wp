@@ -5,11 +5,11 @@
 import { useState, useCallback } from 'react'
 import { useBmsSessionContext } from '@/contexts/BmsSessionContext'
 import { useQuery } from '@/hooks/useQuery'
+import { getDepartmentBreakdown } from '@/services/overviewService'
 import {
-  getDepartmentBreakdown,
   getDoctorWorkload,
   getDepartmentDailyTrend,
-} from '@/services/kpiService'
+} from '@/services/departmentAnalyticsService'
 import { getDateRange } from '@/utils/dateUtils'
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker'
 import { DepartmentChart } from '@/components/charts/DepartmentChart'
@@ -135,9 +135,9 @@ export default function DepartmentAnalytics() {
     <div className="flex flex-col gap-6">
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">การวิเคราะห์แผนก</h1>
+        <h1 className="text-2xl font-bold tracking-tight">การวิเคราะห์แผนกหลัก</h1>
         <p className="text-sm text-muted-foreground">
-          รายละเอียดการเข้ารับบริการแยกตามแผนกและปริมาณงานแพทย์
+          รายละเอียดการเข้ารับบริการแยกตามแผนกหลักและปริมาณงานแพทย์
         </p>
       </div>
 

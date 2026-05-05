@@ -15,6 +15,7 @@ import {
   Users,
   Ambulance,
   HeartPulse,
+  Leaf,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -36,6 +37,7 @@ const NAV_TABS: NavTab[] = [
   { label: '20 อันดับโรค', path: '/top-diseases', icon: Stethoscope },
   { label: 'NCDs ภาพรวม', path: '/ncd-dashboard', icon: HeartPulse },
   { label: 'ภาพรวม refer', path: '/refer-overview', icon: Ambulance },
+  { label: 'แพทย์แผนไทย', path: '/ttm-dashboard', icon: Leaf },
 ];
 
 // ---------------------------------------------------------------------------

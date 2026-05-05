@@ -461,7 +461,7 @@ export async function getNcdPatientsByDiseaseHierarchy(
   // This avoids TIS620 encoding issues with CONCAT in database
   const sql = `
      SELECT
-      CAST(p.moopart AS INT) as moopart,
+      CAST(p.moopart AS UNSIGNED) as moopart,
       IFNULL(TRIM(t.full_name), 'ไม่ระบุ') as address_name,
       COUNT(DISTINCT p.hn) as patient_count
     FROM clinicmember cm

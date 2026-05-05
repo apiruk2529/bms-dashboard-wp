@@ -150,9 +150,15 @@ export function extractSystemInfo(response: BmsSessionResponse): SystemInfo {
 // SQL execution
 // ---------------------------------------------------------------------------
 
+// Global queue for SQL requests to prevent parallel execution (HTTP 409 Conflict)
+let sqlQueue: Promise<any> = Promise.resolve();
+
 /**
  * Execute an arbitrary SQL statement against the BMS API and return the raw
  * response.
+ *
+ * This function uses a global queue to ensure queries are executed sequentially,
+ * preventing HTTP 409 Conflict errors caused by concurrent session access.
  *
  * @throws {Error} On network failure, HTTP errors, or timeout.
  */
@@ -160,53 +166,72 @@ export async function executeSqlViaApi(
   sql: string,
   config: ConnectionConfig,
 ): Promise<SqlApiResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
+  // Chain the request to the global queue
+  const result = sqlQueue.then(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
 
-  try {
-    const response = await fetch(`${config.apiUrl}/api/sql`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${config.bearerToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ sql, app: config.appIdentifier }),
-      signal: controller.signal,
-    });
+    try {
+      let response = await fetch(`${config.apiUrl}/api/sql`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.bearerToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sql, app: config.appIdentifier }),
+        signal: controller.signal,
+      });
 
-    if (response.status === 501) {
-      throw new Error('Session unauthorized. Please reconnect with a valid session ID.');
+      // Handle 409 Conflict with a single retry after a short delay
+      if (response.status === 409) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        response = await fetch(`${config.apiUrl}/api/sql`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${config.bearerToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ sql, app: config.appIdentifier }),
+          signal: controller.signal,
+        });
+      }
+
+      if (response.status === 501) {
+        throw new Error('Session unauthorized. Please reconnect with a valid session ID.');
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          `SQL API returned HTTP ${response.status}. ` +
+            'Please check the BMS service status and try again.',
+        );
+      }
+
+      const data: SqlApiResponse = (await response.json()) as SqlApiResponse;
+      return data;
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error('Query timed out after 60 seconds. Try a simpler query.');
+      }
+
+      if (
+        error instanceof Error &&
+        (error.message.startsWith('Session unauthorized') ||
+          error.message.startsWith('SQL API returned') ||
+          error.message.startsWith('Query timed out'))
+      ) {
+        throw error;
+      }
+
+      throw new Error('Unable to connect to the BMS API. Please check your connection.');
+    } finally {
+      clearTimeout(timeoutId);
     }
+  });
 
-    if (!response.ok) {
-      throw new Error(
-        `SQL API returned HTTP ${response.status}. ` +
-          'Please check the BMS service status and try again.',
-      );
-    }
-
-    const data: SqlApiResponse = await response.json() as SqlApiResponse;
-    return data;
-  } catch (error: unknown) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Query timed out after 60 seconds. Try a simpler query.');
-    }
-
-    // Re-throw our own actionable errors as-is
-    if (error instanceof Error && (
-      error.message.startsWith('Session unauthorized') ||
-      error.message.startsWith('SQL API returned') ||
-      error.message.startsWith('Query timed out')
-    )) {
-      throw error;
-    }
-
-    throw new Error(
-      'Unable to connect to the BMS API. Please check your connection.',
-    );
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  // Update the queue pointer but return the current result to the caller
+  sqlQueue = result.catch(() => {}); // Don't block the queue on failures
+  return result;
 }
 
 // ---------------------------------------------------------------------------

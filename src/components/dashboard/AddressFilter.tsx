@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
-import type { AreaInfo } from '@/services/kpiService'
+import type { AreaInfo } from '@/services/topDiseaseService'
 
 interface AddressFilterProps {
   provinces: AreaInfo[]

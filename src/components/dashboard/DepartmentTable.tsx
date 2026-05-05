@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/dashboard/EmptyState'
 import { useBmsSessionContext } from '@/contexts/BmsSessionContext'
 import { useQuery } from '@/hooks/useQuery'
-import { getDepartmentWorkload } from '@/services/kpiService'
+import { getDepartmentWorkload } from '@/services/departmentAnalyticsService'
 
 export function DepartmentTable() {
   const { connectionConfig, session } = useBmsSessionContext()

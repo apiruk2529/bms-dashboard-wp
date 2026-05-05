@@ -11,14 +11,14 @@ import {
   getReferSummaryCounts,
   getReferTrend,
   getReferOutZoneDetail,
-} from '@/services/kpiService'
+} from '@/services/referService'
 import type {
   ReferRegionDisease,
   HospitalRegionInfo,
   ReferSummaryCounts,
   ReferTrendData,
   ReferOutZoneDetail,
-} from '@/services/kpiService'
+} from '@/services/referService'
 import {
   ResponsiveContainer,
   ComposedChart,

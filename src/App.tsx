@@ -12,6 +12,7 @@ const Demographics = lazy(() => import('@/pages/Demographics'))
 const TopDisease = lazy(() => import('@/pages/TopDisease'))
 const ReferOverview = lazy(() => import('@/pages/ReferOverview'))
 const NcdDashboard = lazy(() => import('@/pages/NcdDashboard'))
+const ThaiTraditionalMedicine = lazy(() => import('@/pages/ThaiTraditionalMedicine'))
 
 function AppRoutes() {
   return (
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="/top-diseases" element={<TopDisease />} />
         <Route path="/refer-overview" element={<ReferOverview />} />
         <Route path="/ncd-dashboard" element={<NcdDashboard />} />
+        <Route path="/ttm-dashboard" element={<ThaiTraditionalMedicine />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

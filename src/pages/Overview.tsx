@@ -46,7 +46,7 @@ import {
   getWeeklyMiniTrend,
   getTopDoctorsThisMonth,
   getRecentVisits,
-} from '@/services/kpiService'
+} from '@/services/overviewService'
 import { formatDate, formatDateTime } from '@/utils/dateUtils'
 import { cn } from '@/lib/utils'
 

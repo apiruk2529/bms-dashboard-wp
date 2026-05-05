@@ -7,8 +7,6 @@ import { useState, useCallback, useMemo } from 'react'
 import { useBmsSessionContext } from '@/contexts/BmsSessionContext'
 import { useQuery } from '@/hooks/useQuery'
 import {
-  getDailyVisitTrend,
-  getHourlyDistribution,
   getMonthlyVisitSummary,
   getVisitsByDayOfWeek,
   getTopDepartmentsForRange,
@@ -18,7 +16,8 @@ import {
   getMedicationCostSummary,
   getDeathSummary,
   getDiagnosisSummary,
-} from '@/services/kpiService'
+} from '@/services/trendsService'
+import { getDailyVisitTrend, getHourlyDistribution } from '@/services/overviewService'
 import type { VisitTrend, HourlyDistribution, DepartmentWorkload } from '@/types'
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker'
 import { HourlyChart } from '@/components/charts/HourlyChart'
