@@ -19,6 +19,7 @@ import type {
   RecentVisit,
   SqlApiResponse,
   VisitTrend,
+  WaitTimeStats,
 } from '@/types';
 
 import { queryBuilder } from '@/services/queryBuilder';
@@ -191,7 +192,7 @@ export async function getDepartmentBreakdown(
   endDate: string,
 ): Promise<DepartmentWorkload[]> {
   const sql =
-    `SELECT k.depcode as department_code, k.department as department_name, COUNT(*) as visit_count ` +
+    `SELECT k.depcode as department_code, ${queryBuilder.thaiText(_dbType, 'k.department')} as department_name, COUNT(*) as visit_count ` +
     `FROM ovst o LEFT JOIN kskdepartment k ON o.main_dep = k.depcode ` +
     `WHERE o.vstdate >= '${startDate}' AND o.vstdate <= '${endDate}' ` +
     `GROUP BY k.depcode, k.department ` +
@@ -216,8 +217,8 @@ export async function getRecentVisits(
     `SELECT o.vn, o.hn, ` +
     `${queryBuilder.dateFormat(dbType, 'o.vstdate', '%Y-%m-%d')} as vstdate, ` +
     `${queryBuilder.castToText(dbType, 'o.vsttime')} as vsttime, ` +
-    `COALESCE(k.department, 'Unknown') as department_name, ` +
-    `COALESCE(d.name, 'Unknown') as doctor_name ` +
+    `COALESCE(${queryBuilder.thaiText(dbType, 'k.department')}, 'Unknown') as department_name, ` +
+    `COALESCE(${queryBuilder.thaiText(dbType, 'd.name')}, 'Unknown') as doctor_name ` +
     `FROM ovst o ` +
     `LEFT JOIN kskdepartment k ON o.main_dep = k.depcode ` +
     `LEFT JOIN doctor d ON o.doctor = d.code ` +
@@ -303,19 +304,78 @@ export async function getTopDoctorsThisMonth(
   dbType: DatabaseType,
 ): Promise<DoctorWorkload[]> {
   const sql =
-    `SELECT o.doctor as doctor_code, d.name as doctor_name, COUNT(*) as patient_count ` +
+    `SELECT o.doctor as doctor_code, ` +
+    `COALESCE(${queryBuilder.thaiText(dbType, 'd.name')}, 'Unknown') as doctor_name, ` + 
+    `COUNT(*) as patient_count ` +
     `FROM ovst o ` +
     `LEFT JOIN doctor d ON o.doctor = d.code ` +
     `WHERE ${queryBuilder.dateFormat(dbType, 'o.vstdate', '%Y-%m')} = ${queryBuilder.dateFormat(dbType, queryBuilder.currentDate(dbType), '%Y-%m')} ` +
     `GROUP BY o.doctor, d.name ` +
     `ORDER BY patient_count DESC ` +
     `LIMIT 5`;
+
   const response = await executeSqlViaApi(sql, config);
   return parseQueryResponse(response, (row) => ({
     doctorCode: String(row['doctor_code'] ?? ''),
-    doctorName: String(row['doctor_name'] ?? 'Unknown'),
+    doctorName: row['doctor_name'] ? String(row['doctor_name']) : 'Unknown',
     patientCount: Number(row['patient_count'] ?? 0),
   }));
+}
+
+/**
+ * Get patient wait time statistics for today.
+ */
+export async function getWaitTimeStats(
+  config: ConnectionConfig,
+  dbType: DatabaseType,
+): Promise<WaitTimeStats | null> {
+  const sql = `
+    SELECT 
+      MONTH(vstdate) as month,
+      AVG(TIME_TO_SEC(service7)-TIME_TO_SEC(service3))/60 as 'opdcard-to-dispense',
+      AVG(TIME_TO_SEC(service12)-TIME_TO_SEC(service3))/60 as 'opdcard-to-doctor',
+      AVG(TIME_TO_SEC(service4)-TIME_TO_SEC(service3))/60 as waiting_nurse,
+      AVG(TIME_TO_SEC(service5)-TIME_TO_SEC(service11))/60 as waiting_doctor,
+      AVG(TIME_TO_SEC(service7)-TIME_TO_SEC(service12))/60 as waiting_dispense,
+      AVG(TIME_TO_SEC(service11)-TIME_TO_SEC(service4))/60 as waiting_screen,
+      AVG(TIME_TO_SEC(service12)-TIME_TO_SEC(service5))/60 as doctor
+    FROM service_time
+    WHERE (vstdate = ${queryBuilder.currentDate(dbType)})
+      AND (${queryBuilder.hourExtract(dbType, 'service3')} > 7 AND ${queryBuilder.hourExtract(dbType, 'service3')} < 16)
+      AND service3 IS NOT NULL
+      AND service7 IS NOT NULL
+      AND TIME_TO_SEC(service7) - TIME_TO_SEC(service3) < 14400
+      AND vn IN (SELECT vn FROM ovst WHERE main_dep = '010')
+      AND vn NOT IN (SELECT vn FROM er_regist) 
+      AND vn NOT IN (SELECT vn FROM lab_head) 
+      AND vn NOT IN (SELECT vn FROM oapp)
+      AND vn NOT IN (SELECT vn FROM xray_head)
+      AND WEEKDAY(vstdate) NOT IN (5, 6) 
+      AND vstdate NOT IN (SELECT holiday_date FROM holiday)
+      AND service7 > service3
+      AND service12 > service3
+      AND service4 > service3
+      AND service5 > service11
+      AND service7 > service12
+      AND service11 > service4
+      AND service12 > service5
+    GROUP BY vstdate 
+    ORDER BY month
+  `;
+
+  const response = await executeSqlViaApi(sql, config);
+  const rows = parseQueryResponse(response, (row) => ({
+    month: Number(row['month'] ?? 0),
+    opdCardToDispense: Number(row['opdcard-to-dispense'] ?? 0),
+    opdCardToDoctor: Number(row['opdcard-to-doctor'] ?? 0),
+    waitingNurse: Number(row['waiting_nurse'] ?? 0),
+    waitingDoctor: Number(row['waiting_doctor'] ?? 0),
+    waitingDispense: Number(row['waiting_dispense'] ?? 0),
+    waitingScreen: Number(row['waiting_screen'] ?? 0),
+    doctorTime: Number(row['doctor'] ?? 0),
+  }));
+
+  return rows[0] ?? null;
 }
 
 // ---------------------------------------------------------------------------

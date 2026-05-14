@@ -144,7 +144,7 @@ export async function getTopDepartmentsForRange(
   endDate: string,
 ): Promise<DepartmentWorkload[]> {
   const sql =
-    `SELECT k.depcode as department_code, k.department as department_name, COUNT(*) as visit_count ` +
+    `SELECT k.depcode as department_code, CONVERT(k.department USING utf8) as department_name, COUNT(*) as visit_count ` +
     `FROM ovst o LEFT JOIN kskdepartment k ON o.main_dep = k.depcode ` +
     `WHERE o.vstdate >= '${startDate}' AND o.vstdate <= '${endDate}' ` +
     `GROUP BY k.depcode, k.department ` +
@@ -173,7 +173,7 @@ export async function getTopDiagnoses(
   endDate: string,
 ): Promise<{ icd10: string; diagnosisName: string; visitCount: number }[]> {
   const sql =
-    `SELECT od.icd10, COALESCE(i.tname, i.name, od.icd10) as diagnosis_name, COUNT(*) as visit_count ` +
+    `SELECT od.icd10, COALESCE(CONVERT(i.tname USING utf8), CONVERT(i.name USING utf8), od.icd10) as diagnosis_name, COUNT(*) as visit_count ` +
     `FROM ovstdiag od ` +
     `LEFT JOIN icd101 i ON od.icd10 = i.code ` +
     `WHERE od.vstdate >= '${startDate}' AND od.vstdate <= '${endDate}' ` +
@@ -199,12 +199,12 @@ export async function getTopMedications(
   endDate: string,
 ): Promise<{ drugName: string; totalQty: number; totalCost: number }[]> {
   const sql =
-    `SELECT COALESCE(d.name, 'ไม่ระบุ') as drug_name, ` +
+    `SELECT COALESCE(CONVERT(d.name USING utf8), 'ไม่ระบุ') as drug_name, ` +
     `SUM(op.qty) as total_qty, ` +
     `SUM(op.qty * op.unitprice) as total_cost ` +
     `FROM opitemrece op ` +
     `LEFT JOIN drugitems d ON op.icode = d.icode ` +
-    `WHERE op.vstdate >= '${startDate}' AND op.vstdate <= '${endDate}' ` +
+    `WHERE op.vstdate >= '${startDate}' AND op.vstdate <= '${endDate}'   ` +
     `GROUP BY d.name ` +
     `ORDER BY total_cost DESC ` +
     `LIMIT 10`;

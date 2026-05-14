@@ -149,10 +149,21 @@ export interface DoctorWorkload {
   patientCount: number;
 }
 
+export interface WorkloadDailyItem {
+  staff: string;
+  vstdate: string;
+  total: number;
+  shift1: number;
+  shift2: number;
+  shift3: number;
+}
+
+
 export interface VisitTrend {
   date: string;
   visitCount: number;
 }
+
 
 export interface HourlyDistribution {
   hour: number;
@@ -189,4 +200,16 @@ export interface OverviewStats {
   avgDailyVisitsThisMonth: number
   totalDoctors: number
   totalDepartments: number
+}
+
+/** Statistics for patient wait times across different service stages */
+export interface WaitTimeStats {
+  month: number;
+  opdCardToDispense: number;
+  opdCardToDoctor: number;
+  waitingNurse: number;
+  waitingDoctor: number;
+  waitingDispense: number;
+  waitingScreen: number;
+  doctorTime: number;
 }

@@ -68,12 +68,12 @@ export async function getTop20OpdDiseases(
   endDate: string,
 ): Promise<Top20OpdDisease[]> {
   const sql =
-    `SELECT o.icd10, i.name, COUNT(DISTINCT o.hn) as HN, COUNT(o.vn) as VN ` +
+    `SELECT o.icd10, ${queryBuilder.thaiText(_dbType, 'i.name')} as name, COUNT(DISTINCT o.hn) as HN, COUNT(o.vn) as VN ` +
     `FROM ovstdiag o ` +
     `LEFT JOIN icd101 i ON o.icd10 = i.code ` +
     `WHERE o.vstdate BETWEEN '${startDate}' AND '${endDate}' ` +
     `AND i.code IS NOT NULL AND o.icd10 NOT LIKE 'Z%' ` +
-    `GROUP BY i.code ` +
+    `GROUP BY i.code, i.name ` +
     `ORDER BY VN DESC ` +
     `LIMIT 20`;
   const response = await executeSqlViaApi(sql, config);
@@ -95,7 +95,7 @@ export async function getTop20IpdDiseases(
   endDate: string,
 ): Promise<Top20IpdDisease[]> {
   const sql =
-    `SELECT v.pdx, COUNT(v.pdx) as pdx_count, i.name as icdname ` +
+    `SELECT v.pdx, COUNT(v.pdx) as pdx_count, ${queryBuilder.thaiText(_dbType, 'i.name')} as icdname ` +
     `FROM an_stat v ` +
     `LEFT JOIN icd101 i ON i.code = v.pdx ` +
     `WHERE v.dchdate BETWEEN '${startDate}' AND '${endDate}' ` +
@@ -121,7 +121,7 @@ export async function getTop20ReferDiseases(
   endDate: string,
 ): Promise<Top20ReferDisease[]> {
   const sql =
-    `SELECT ro.pdx, i10.name AS ICD10, ` +
+    `SELECT ro.pdx, ${queryBuilder.thaiText(_dbType, 'i10.name')} AS ICD10, ` +
     `COUNT(ro.vn) AS ct, COUNT(DISTINCT(ro.hn)) AS ct_hn, ` +
     `SUM(IF(ro.refer_point='OPD',1,0)) AS refer_opd, ` +
     `SUM(IF(ro.refer_point='ER',1,0)) AS refer_ER, ` +
@@ -129,7 +129,7 @@ export async function getTop20ReferDiseases(
     `FROM referout ro ` +
     `LEFT JOIN icd101 i10 ON ro.pdx = i10.code ` +
     `WHERE ro.refer_date BETWEEN '${startDate}' AND '${endDate}' ` +
-    `GROUP BY ro.pdx ` +
+    `GROUP BY ro.pdx, i10.name ` +
     `ORDER BY ct DESC ` +
     `LIMIT 20`;
   const response = await executeSqlViaApi(sql, config);
@@ -177,6 +177,7 @@ export async function getHospitalRegionInfo(
       const row = respDirect.data[0];
       const chw = String(row['chwpart'] ?? '').trim();
       const zone = String(row['region_id'] ?? '').trim();
+      // Even though we don't need Thai for codes, we apply it to consistency if there were names
       if (chw && chw !== '00' && chw !== '') {
         return {
           chwpart: chw.padStart(2, '0'),
@@ -270,7 +271,7 @@ export async function getTopReferDiseasesByRegion(
   }
 
   const sql =
-    `SELECT ro.pdx, i10.name AS ICD10, ` +
+    `SELECT ro.pdx, ${queryBuilder.thaiText(_dbType, 'i10.name')} AS ICD10, ` +
     `COUNT(ro.vn) AS ct, ` +
     `SUM(IF(ro.refer_point='OPD',1,0)) AS refer_opd, ` +
     `SUM(IF(ro.refer_point='ER',1,0)) AS refer_ER, ` +
@@ -431,7 +432,7 @@ export async function getReferOutZoneDetail(
   const normZone = hospitalZoneCode.padStart(2, '0');
 
   const sql =
-    `SELECT ro.hospcode, h.name as hospname, ro.pdx, i10.name as icd10name, COUNT(ro.vn) as ct ` +
+    `SELECT ro.hospcode, ${queryBuilder.thaiText(_dbType, 'h.name')} as hospname, ro.pdx, ${queryBuilder.thaiText(_dbType, 'i10.name')} as icd10name, COUNT(ro.vn) as ct ` +
     `FROM referout ro ` +
     `LEFT JOIN hospcode h ON ro.hospcode = h.hospcode ` +
     `LEFT JOIN icd101 i10 ON ro.pdx = i10.code ` +
@@ -461,26 +462,26 @@ export interface AreaInfo {
 }
 
 export async function getProvinces(config: ConnectionConfig): Promise<AreaInfo[]> {
-  const sql = `SELECT chwpart as code, name FROM thaiaddress WHERE amppart='00' AND tmbpart='00' ORDER BY name`;
+  const sql = `SELECT chwpart as code, ${queryBuilder.thaiText(config.databaseType || 'mysql', 'name')} as name FROM thaiaddress WHERE amppart='00' AND tmbpart='00' ORDER BY name`;
   const response = await executeSqlViaApi(sql, config);
   return parseQueryResponse(response, (row) => ({ code: String(row['code'] ?? ''), name: String(row['name'] ?? '') }));
 }
 
 export async function getAmphurs(config: ConnectionConfig, chwpart: string): Promise<AreaInfo[]> {
-  const sql = `SELECT amppart as code, name FROM thaiaddress WHERE chwpart='${chwpart}' AND amppart<>'00' AND tmbpart='00' ORDER BY name`;
+  const sql = `SELECT amppart as code, ${queryBuilder.thaiText(config.databaseType || 'mysql', 'name')} as name FROM thaiaddress WHERE chwpart='${chwpart}' AND amppart<>'00' AND tmbpart='00' ORDER BY name`;
   const response = await executeSqlViaApi(sql, config);
   return parseQueryResponse(response, (row) => ({ code: String(row['code'] ?? ''), name: String(row['name'] ?? '') }));
 }
 
 export async function getTambons(config: ConnectionConfig, chwpart: string, amppart: string): Promise<AreaInfo[]> {
-  const sql = `SELECT tmbpart as code, name FROM thaiaddress WHERE chwpart='${chwpart}' AND amppart='${amppart}' AND tmbpart<>'00' ORDER BY name`;
+  const sql = `SELECT tmbpart as code, ${queryBuilder.thaiText(config.databaseType || 'mysql', 'name')} as name FROM thaiaddress WHERE chwpart='${chwpart}' AND amppart='${amppart}' AND tmbpart<>'00' ORDER BY name`;
   const response = await executeSqlViaApi(sql, config);
   return parseQueryResponse(response, (row) => ({ code: String(row['code'] ?? ''), name: String(row['name'] ?? '') }));
 }
 
 export async function getVillages(config: ConnectionConfig, chwpart: string, amppart: string, tmbpart: string): Promise<AreaInfo[]> {
   const addressId = `${chwpart}${amppart}${tmbpart}`;
-  const sql = `SELECT village_moo as code, village_name as name FROM village WHERE address_id='${addressId}' ORDER BY ABS(village_moo)`;
+  const sql = `SELECT village_moo as code, ${queryBuilder.thaiText(config.databaseType || 'mysql', 'village_name')} as name FROM village WHERE address_id='${addressId}' ORDER BY ABS(village_moo)`;
   const response = await executeSqlViaApi(sql, config);
   return parseQueryResponse(response, (row) => ({ code: String(row['code'] ?? ''), name: String(row['name'] ?? '') }));
 }

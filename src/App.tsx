@@ -8,6 +8,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 const Overview = lazy(() => import('@/pages/Overview'))
 const Trends = lazy(() => import('@/pages/Trends'))
 const DepartmentAnalytics = lazy(() => import('@/pages/DepartmentAnalytics'))
+const Workload = lazy(() => import('@/pages/Workload'))
 const Demographics = lazy(() => import('@/pages/Demographics'))
 const TopDisease = lazy(() => import('@/pages/TopDisease'))
 const ReferOverview = lazy(() => import('@/pages/ReferOverview'))
@@ -21,6 +22,7 @@ function AppRoutes() {
         <Route path="/" element={<Overview />} />
         <Route path="/trends" element={<Trends />} />
         <Route path="/departments" element={<DepartmentAnalytics />} />
+        <Route path="/workload" element={<Workload />} />
         <Route path="/demographics" element={<Demographics />} />
         <Route path="/top-diseases" element={<TopDisease />} />
         <Route path="/refer-overview" element={<ReferOverview />} />

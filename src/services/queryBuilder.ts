@@ -106,6 +106,18 @@ function detectDatabaseType(versionString: string): DatabaseType {
   return 'mysql';
 }
 
+/**
+ * Wraps a column in the database-specific Thai text conversion logic.
+ * For MySQL (HOSxP), this typically requires casting to binary then converting to TIS-620.
+ */
+function thaiText(dbType: DatabaseType, column: string): string {
+  if (dbType === 'mysql') {
+    return `CONVERT(CAST(${column} AS BINARY) USING tis620)`;
+  }
+  // PostgreSQL usually handles encoding better if configured correctly, but we can add logic here if needed
+  return column;
+}
+
 // ---------------------------------------------------------------------------
 // Exported module
 // ---------------------------------------------------------------------------
@@ -119,4 +131,5 @@ export const queryBuilder = {
   random,
   castToText,
   detectDatabaseType,
+  thaiText,
 } as const;

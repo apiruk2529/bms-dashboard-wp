@@ -44,9 +44,9 @@ import { useQuery } from '@/hooks/useQuery'
 import {
   getOverviewStats,
   getWeeklyMiniTrend,
-  getTopDoctorsThisMonth,
-  getRecentVisits,
+  getWaitTimeStats,
 } from '@/services/overviewService'
+import { WaitTimeDashboard } from '@/components/dashboard/WaitTimeDashboard'
 import { formatDate, formatDateTime } from '@/utils/dateUtils'
 import { cn } from '@/lib/utils'
 
@@ -65,17 +65,6 @@ function truncateUrl(url: string, maxLength = 40): string {
   return url.substring(0, maxLength) + '...'
 }
 
-/** Format vsttime (e.g. "14:30:00" or "143000") into "HH:MM" */
-function formatVisitTime(raw: string): string {
-  if (!raw) return '--:--'
-  // Handle "HH:MM:SS" format
-  if (raw.includes(':')) {
-    return raw.substring(0, 5)
-  }
-  // Handle numeric "HHMMSS" format
-  const padded = raw.padStart(6, '0')
-  return `${padded.substring(0, 2)}:${padded.substring(2, 4)}`
-}
 
 export default function Overview() {
   const { session, connectionConfig, refreshSession } = useBmsSessionContext()
@@ -124,27 +113,15 @@ export default function Overview() {
     enabled: isConnected,
   })
 
-  const topDoctorsFn = useCallback(
-    () => getTopDoctorsThisMonth(connectionConfig!, session!.databaseType),
+  const waitTimeStatsFn = useCallback(
+    () => getWaitTimeStats(connectionConfig!, session!.databaseType),
     [connectionConfig, session],
   )
   const {
-    data: topDoctors,
-    isLoading: isDoctorsLoading,
-  } = useQuery<Awaited<ReturnType<typeof getTopDoctorsThisMonth>>>({
-    queryFn: topDoctorsFn,
-    enabled: isConnected,
-  })
-
-  const recentVisitsFn = useCallback(
-    () => getRecentVisits(connectionConfig!, session!.databaseType),
-    [connectionConfig, session],
-  )
-  const {
-    data: recentVisits,
-    isLoading: isVisitsLoading,
-  } = useQuery<Awaited<ReturnType<typeof getRecentVisits>>>({
-    queryFn: recentVisitsFn,
+    data: waitTimeStats,
+    isLoading: isWaitTimeLoading,
+  } = useQuery<Awaited<ReturnType<typeof getWaitTimeStats>>>({
+    queryFn: waitTimeStatsFn,
     enabled: isConnected,
   })
 
@@ -329,11 +306,16 @@ export default function Overview() {
       </div>
 
       {/* ------------------------------------------------------------------- */}
+      {/* 3.5 Wait Time Dashboard                                              */}
+      {/* ------------------------------------------------------------------- */}
+      <WaitTimeDashboard data={waitTimeStats} isLoading={isWaitTimeLoading} />
+
+      {/* ------------------------------------------------------------------- */}
       {/* 4. Weekly Trend + Top Doctors                                        */}
       {/* ------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        {/* Left: Weekly Visit Trend (3/5 width) */}
-        <Card className="lg:col-span-3">
+        {/* Weekly Visit Trend (Full width) */}
+        <Card className="lg:col-span-5">
           <CardHeader>
             <CardTitle className="text-lg">การเข้ารับบริการสัปดาห์นี้</CardTitle>
             <CardDescription>
@@ -393,58 +375,14 @@ export default function Overview() {
             )}
           </CardContent>
         </Card>
-
-        {/* Right: Top Doctors This Month (2/5 width) */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg">แพทย์ยอดนิยมในเดือนนี้</CardTitle>
-            <CardDescription>เรียงตามจำนวนผู้ป่วย</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isDoctorsLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <Skeleton className="h-6 w-6 rounded-full" />
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="ml-auto h-4 w-12" />
-                  </div>
-                ))}
-              </div>
-            ) : topDoctors && topDoctors.length > 0 ? (
-              <div className="space-y-3">
-                {topDoctors.map((doc, index) => (
-                  <div
-                    key={doc.doctorCode}
-                    className="flex items-center gap-3"
-                  >
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                      {index + 1}
-                    </div>
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                      {doc.doctorName}
-                    </span>
-                    <span className="shrink-0 text-sm font-semibold text-muted-foreground">
-                      {doc.patientCount.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                ไม่มีกิจกรรมของแพทย์ในเดือนนี้
-              </p>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* ------------------------------------------------------------------- */}
       {/* 5. Department Workload + Recent Visits                               */}
       {/* ------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Left: Department Workload (2/3 width) */}
-        <Card className="lg:col-span-2">
+        {/* Department Workload (Full width) */}
+        <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle className="text-lg">ปริมาณงานแผนก</CardTitle>
             <CardDescription>
@@ -453,57 +391,6 @@ export default function Overview() {
           </CardHeader>
           <CardContent>
             <DepartmentTable />
-          </CardContent>
-        </Card>
-
-        {/* Right: Recent Visits (1/3 width) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">การเข้ารับบริการล่าสุด</CardTitle>
-            <CardDescription>10 รายการล่าสุดที่บันทึก</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isVisitsLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <Skeleton className="h-5 w-12 rounded" />
-                    <div className="flex-1 space-y-1">
-                      <Skeleton className="h-3 w-28" />
-                      <Skeleton className="h-3 w-20" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : recentVisits && recentVisits.length > 0 ? (
-              <div className="space-y-0 divide-y">
-                {recentVisits.map((visit, index) => (
-                  <div
-                    key={`${visit.vn}-${index}`}
-                    className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0"
-                  >
-                    <Badge
-                      variant="secondary"
-                      className="shrink-0 font-mono text-[10px] tabular-nums"
-                    >
-                      {formatVisitTime(visit.vsttime)}
-                    </Badge>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {visit.departmentName}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {visit.doctorName}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                ไม่มีการเข้ารับบริการล่าสุดที่บันทึก
-              </p>
-            )}
           </CardContent>
         </Card>
       </div>

@@ -24,6 +24,7 @@ interface VisitTrendChartProps {
   isLoading: boolean
   onDateClick?: (date: string) => void
   className?: string
+  renderWrapper?: boolean
 }
 
 /**
@@ -42,20 +43,22 @@ export function VisitTrendChart({
   isLoading,
   onDateClick,
   className,
+  renderWrapper = true,
 }: VisitTrendChartProps) {
   // ---------------------------------------------------------------------------
   // Loading state
   // ---------------------------------------------------------------------------
   if (isLoading) {
-    return (
+    const content = <Skeleton className="h-[350px] w-full" />
+    return renderWrapper ? (
       <Card className={cn(className)}>
         <CardHeader>
           <CardTitle className="text-sm font-medium">แนวโน้มการเข้ารับบริการรายวัน</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Skeleton className="h-[350px] w-full" />
-        </CardContent>
+        <CardContent>{content}</CardContent>
       </Card>
+    ) : (
+      content
     )
   }
 
@@ -63,71 +66,77 @@ export function VisitTrendChart({
   // Empty state
   // ---------------------------------------------------------------------------
   if (!data || data.length === 0) {
-    return (
+    const content = <EmptyState title="ไม่มีข้อมูลการเข้ารับบริการ" />
+    return renderWrapper ? (
       <Card className={cn(className)}>
         <CardHeader>
           <CardTitle className="text-sm font-medium">แนวโน้มการเข้ารับบริการรายวัน</CardTitle>
         </CardHeader>
-        <CardContent>
-          <EmptyState title="ไม่มีข้อมูลการเข้ารับบริการ" />
-        </CardContent>
+        <CardContent>{content}</CardContent>
       </Card>
+    ) : (
+      content
     )
   }
 
   // ---------------------------------------------------------------------------
   // Chart
   // ---------------------------------------------------------------------------
-  return (
+  const chart = (
+    <ResponsiveContainer width="100%" height={350}>
+      <BarChart
+        data={data}
+        onClick={(state: Record<string, unknown>) => {
+          const payload = state?.activePayload as Array<{ payload: { date: string } }> | undefined
+          if (payload?.[0]?.payload && onDateClick) {
+            onDateClick(payload[0].payload.date)
+          }
+        }}
+      >
+        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+        <XAxis
+          dataKey="date"
+          tickFormatter={formatDateLabel}
+          tick={{ fontSize: 12 }}
+          tickLine={false}
+          axisLine={false}
+        />
+        <YAxis
+          tick={{ fontSize: 12 }}
+          tickLine={false}
+          axisLine={false}
+          allowDecimals={false}
+        />
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <Tooltip
+          labelFormatter={((label: unknown) => formatDateLabel(String(label))) as any}
+          formatter={((value: unknown) => [Number(value).toLocaleString(), 'ครั้ง']) as any}
+          contentStyle={{
+            borderRadius: '8px',
+            border: '1px solid hsl(var(--border))',
+            backgroundColor: 'hsl(var(--popover))',
+            color: 'hsl(var(--popover-foreground))',
+          }}
+        />
+        <Bar
+          dataKey="visitCount"
+          fill="hsl(var(--chart-1))"
+          radius={[4, 4, 0, 0]}
+          cursor="pointer"
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  )
+
+  return renderWrapper ? (
     <Card className={cn(className)}>
       <CardHeader>
         <CardTitle className="text-sm font-medium">แนวโน้มการเข้ารับบริการรายวัน</CardTitle>
       </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={350}>
-          <BarChart
-            data={data}
-            onClick={(state: Record<string, unknown>) => {
-              const payload = state?.activePayload as Array<{ payload: { date: string } }> | undefined
-              if (payload?.[0]?.payload && onDateClick) {
-                onDateClick(payload[0].payload.date)
-              }
-            }}
-          >
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis
-              dataKey="date"
-              tickFormatter={formatDateLabel}
-              tick={{ fontSize: 12 }}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 12 }}
-              tickLine={false}
-              axisLine={false}
-              allowDecimals={false}
-            />
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            <Tooltip
-              labelFormatter={((label: unknown) => formatDateLabel(String(label))) as any}
-              formatter={((value: unknown) => [Number(value).toLocaleString(), 'ครั้ง']) as any}
-              contentStyle={{
-                borderRadius: '8px',
-                border: '1px solid hsl(var(--border))',
-                backgroundColor: 'hsl(var(--popover))',
-                color: 'hsl(var(--popover-foreground))',
-              }}
-            />
-            <Bar
-              dataKey="visitCount"
-              fill="hsl(var(--chart-1))"
-              radius={[4, 4, 0, 0]}
-              cursor="pointer"
-            />
-          </BarChart>
-        </ResponsiveContainer>
-      </CardContent>
+      <CardContent>{chart}</CardContent>
     </Card>
+  ) : (
+    chart
   )
 }
+

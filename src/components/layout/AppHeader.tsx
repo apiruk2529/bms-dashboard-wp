@@ -8,6 +8,7 @@ import { useBmsSessionContext } from '@/contexts/BmsSessionContext';
 import {
   Activity,
   Building2,
+  ClipboardList,
   LayoutDashboard,
   LogOut,
   Stethoscope,
@@ -33,6 +34,7 @@ const NAV_TABS: NavTab[] = [
   { label: 'ภาพรวม', path: '/', icon: LayoutDashboard },
   { label: 'แนวโน้ม', path: '/trends', icon: TrendingUp },
   { label: 'แผนก', path: '/departments', icon: Building2 },
+  { label: 'เวชระเบียน', path: '/workload', icon: ClipboardList },
   { label: 'ข้อมูลประชากร', path: '/demographics', icon: Users },
   { label: '20 อันดับโรค', path: '/top-diseases', icon: Stethoscope },
   { label: 'NCDs ภาพรวม', path: '/ncd-dashboard', icon: HeartPulse },

@@ -13,6 +13,7 @@ import type {
 } from '@/types';
 
 import { queryBuilder } from '@/services/queryBuilder';
+import { fixObjectEncoding } from '@/utils/charsetUtils';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -45,7 +46,13 @@ export async function retrieveBmsSession(sessionId: string): Promise<BmsSessionR
 
   try {
     const url = `${PASTE_JSON_URL}?Action=GET&code=${sessionId}`;
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'Accept-Charset': 'utf-8',
+        'Accept': 'application/json',
+      },
+    });
 
     if (!response.ok) {
       throw new Error(
@@ -54,7 +61,9 @@ export async function retrieveBmsSession(sessionId: string): Promise<BmsSessionR
       );
     }
 
-    const data: BmsSessionResponse = await response.json() as BmsSessionResponse;
+    let data: BmsSessionResponse = (await response.json()) as BmsSessionResponse;
+    // Fix any encoding issues in the session response
+    data = fixObjectEncoding(data);
     return data;
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
@@ -172,12 +181,18 @@ export async function executeSqlViaApi(
     const timeoutId = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
 
     try {
+      const requestHeaders = {
+        Authorization: `Bearer ${config.bearerToken}`,
+        'Content-Type': 'application/json; charset=utf-8',
+        'Accept-Charset': 'utf-8',
+      };
+
+      // Log the SQL being sent for debugging (remove in production)
+      console.debug('BMS SQL Query:', sql);
+
       let response = await fetch(`${config.apiUrl}/api/sql`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${config.bearerToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers: requestHeaders,
         body: JSON.stringify({ sql, app: config.appIdentifier }),
         signal: controller.signal,
       });
@@ -187,10 +202,7 @@ export async function executeSqlViaApi(
         await new Promise((resolve) => setTimeout(resolve, 800));
         response = await fetch(`${config.apiUrl}/api/sql`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${config.bearerToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: requestHeaders,
           body: JSON.stringify({ sql, app: config.appIdentifier }),
           signal: controller.signal,
         });
@@ -201,13 +213,50 @@ export async function executeSqlViaApi(
       }
 
       if (!response.ok) {
+        // Try to parse error details from response
+        let errorDetail = '';
+        try {
+          const errorText = await response.text();
+          const errorObj = JSON.parse(errorText);
+          errorDetail = errorObj.Message || errorObj.message || errorText;
+        } catch {
+          errorDetail = response.statusText;
+        }
+        
         throw new Error(
           `SQL API returned HTTP ${response.status}. ` +
-            'Please check the BMS service status and try again.',
+            (errorDetail ? `Details: ${errorDetail}. ` : '') +
+            'Please check the SQL syntax and BMS service status.',
         );
       }
 
-      const data: SqlApiResponse = (await response.json()) as SqlApiResponse;
+      // Get response as text first to handle encoding issues
+      const responseText = await response.text();
+      
+      // Try to parse JSON
+      let data: SqlApiResponse;
+      try {
+        data = JSON.parse(responseText) as SqlApiResponse;
+      } catch (parseError) {
+        // If JSON parsing fails, try to fix encoding issues first
+        console.debug('Initial JSON parse failed, attempting charset fix');
+        // Create a new Uint8Array from the response text bytes
+        const uint8 = new Uint8Array(responseText.length);
+        for (let i = 0; i < responseText.length; i++) {
+          uint8[i] = responseText.charCodeAt(i) & 0xFF;
+        }
+        try {
+          const fixedText = new TextDecoder('utf-8').decode(uint8);
+          data = JSON.parse(fixedText) as SqlApiResponse;
+          console.debug('Successfully fixed encoding and parsed JSON');
+        } catch (e) {
+          // If still failing, re-throw original parse error
+          throw parseError;
+        }
+      }
+
+      // Fix any remaining encoding issues in the response data
+      data = fixObjectEncoding(data);
       return data;
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === 'AbortError') {

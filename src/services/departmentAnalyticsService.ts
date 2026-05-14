@@ -18,6 +18,7 @@ import type {
   PatientTypeDistribution,
   RecentVisit,
   SqlApiResponse,
+  StaffVisitDetail,
   VisitTrend,
 } from '@/types';
 
@@ -70,6 +71,43 @@ export async function getDepartmentWorkload(
 }
 
 /**
+ * Daily workload summary by staff/kiosk.
+ */
+export async function getWorkloadDaily(
+  config: ConnectionConfig,
+  dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+): Promise<WorkloadDailyItem[]> {
+  const sql =
+    `SELECT COALESCE(d.staff, 'Kiosk') AS staff, o.vstdate as vstdate, COUNT(*) AS total, ` +
+    `SUM(CASE WHEN o.vsttime BETWEEN '08:00:00' AND '16:00:00' THEN 1 ELSE 0 END) AS shift1, ` +
+    `SUM(CASE WHEN o.vsttime BETWEEN '16:00:01' AND '23:59:59' THEN 1 ELSE 0 END) AS shift2, ` +
+    `SUM(CASE WHEN o.vsttime BETWEEN '00:00:00' AND '07:59:59' THEN 1 ELSE 0 END) AS shift3 ` +
+    `FROM ovst o ` +
+    `LEFT JOIN ptdepart d ON o.vn = d.vn AND d.depcode = '013' ` +
+    `WHERE o.vstdate >= '${startDate}' AND o.vstdate <= '${endDate}' ` +
+    `GROUP BY d.staff, o.vstdate ` +
+    `ORDER BY o.vstdate ASC`;
+
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => {
+    const rawStaff = String(row['staff'] ?? '');
+    // Convert to lowercase to group case-insensitive logins, but keep Kiosk capitalized if it's kiosk
+    const staff = rawStaff.toLowerCase() === 'kiosk' ? 'Kiosk' : rawStaff.toLowerCase();
+    
+    return {
+      staff,
+      vstdate: String(row['vstdate'] ?? ''),
+      total: Number(row['total'] ?? 0),
+      shift1: Number(row['shift1'] ?? 0),
+      shift2: Number(row['shift2'] ?? 0),
+      shift3: Number(row['shift3'] ?? 0),
+    };
+  });
+}
+
+/**
  * Aggregate overview KPI summary (all four counts fetched in parallel).
  */
 export async function getDoctorWorkload(
@@ -83,7 +121,7 @@ export async function getDoctorWorkload(
     ? ` AND o.main_dep = '${depcode}'`
     : '';
   const sql =
-    `SELECT o.doctor as doctor_code, d.name as doctor_name, COUNT(*) as patient_count ` +
+    `SELECT o.doctor as doctor_code, COALESCE(d.name, o.doctor) as doctor_name, COUNT(*) as patient_count ` +
     `FROM ovst o LEFT JOIN doctor d ON o.doctor = d.code ` +
     `WHERE o.vstdate >= '${startDate}' AND o.vstdate <= '${endDate}'${depFilter} ` +
     `GROUP BY o.doctor, d.name ` +
@@ -96,6 +134,8 @@ export async function getDoctorWorkload(
     patientCount: Number(row['patient_count'] ?? 0),
   }));
 }
+
+
 
 /**
  * Daily visit trend for a specific department within a date range.
