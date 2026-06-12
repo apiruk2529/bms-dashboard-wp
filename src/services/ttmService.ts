@@ -94,7 +94,7 @@ export async function getTtmFinancialSummary(
     JOIN health_med_service h2 ON h2.health_med_service_id = h1.health_med_service_id
     WHERE h2.service_date BETWEEN '${startDate}' AND '${endDate}'
   `;
-  
+
   // Herbal Drug Revenue
   const sqlDrug = `
     SELECT COALESCE(SUM(op.qty * op.unitprice), 0) AS total_drug_value
@@ -174,17 +174,17 @@ export async function getTtmMonthlyTrend(
   }));
 
   const map = new Map<string, TtmMonthlyTrend>();
-  
+
   svcData.forEach(d => {
-    map.set(d.month, { 
-      month: d.month, 
-      totalServiceRevenue: d.val, 
+    map.set(d.month, {
+      month: d.month,
+      totalServiceRevenue: d.val,
       totalDrugRevenue: 0,
       totalSessions: d.sessions,
       uniquePatients: d.patients
     });
   });
-  
+
   drugData.forEach(d => {
     if (!map.has(d.month)) {
       map.set(d.month, { month: d.month, totalServiceRevenue: 0, totalDrugRevenue: 0, totalSessions: 0, uniquePatients: 0 });
@@ -227,13 +227,15 @@ export async function getTtmServiceTypeSummary(
 
 export async function getTtmDoctorWorkload(
   config: ConnectionConfig,
+  dbType: DatabaseType,
   startDate: string,
   endDate: string,
 ): Promise<TtmDoctorWorkload[]> {
+  const doctorName = queryBuilder.thaiText(dbType, 'h4.health_med_provider_fname');
   const sql = `
     SELECT 
       h1.health_med_provider_id AS doctor_code, 
-      COALESCE(h4.health_med_provider_fname, h1.health_med_provider_id, 'ไม่ระบุ') AS doctor_name, 
+      ${doctorName} AS health__name, 
       COUNT(h1.health_med_provider_id) AS session_count, 
       COUNT(DISTINCT h2.hn) AS unique_patients, 
       COALESCE(SUM(h1.service_price), 0) AS total_value 
@@ -248,7 +250,7 @@ export async function getTtmDoctorWorkload(
   const response = await executeSqlViaApi(sql, config);
   return parseQueryResponse(response, (row) => ({
     doctorCode: String(row['doctor_code'] ?? ''),
-    doctorName: String(row['doctor_name'] ?? 'ไม่ระบุ'),
+    doctorName: String(row['health__name'] ?? 'ไม่ระบุ'),
     sessionCount: Number(row['session_count'] ?? 0),
     uniquePatients: Number(row['unique_patients'] ?? 0),
     totalValue: Number(row['total_value'] ?? 0),

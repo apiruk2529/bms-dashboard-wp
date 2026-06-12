@@ -25,6 +25,16 @@ export interface TelemedicineMonthlyTrend {
   totalOpVisits: number;
 }
 
+export interface TelemedicinePayerType {
+  pttypeName: string;
+  count: number;
+}
+
+export interface TelemedicineVisitType {
+  visitTypeName: string;
+  count: number;
+}
+
 export async function getTelemedicineSummary(
   config: ConnectionConfig,
   startDate: string,
@@ -79,5 +89,57 @@ export async function getTelemedicineMonthlyTrend(
     month: String(r['month_val'] ?? ''),
     telemedicineVisits: Number(r['telemedicine_visits'] ?? 0),
     totalOpVisits: Number(r['total_op_visits'] ?? 0),
+  }));
+}
+
+export async function getTelemedicineByPayerType(
+  config: ConnectionConfig,
+  startDate: string,
+  endDate: string,
+): Promise<TelemedicinePayerType[]> {
+  const sql = `
+    SELECT 
+      COALESCE(pt.name, 'ไม่ระบุสิทธิ์') as pttype_name,
+      COUNT(*) as visit_count
+    FROM ovst o
+    INNER JOIN ovstist o1 ON o.ovstist = o1.ovstist
+    LEFT OUTER JOIN kskdepartment ON o.main_dep = kskdepartment.depcode
+    LEFT OUTER JOIN pttype pt ON o.pttype = pt.pttype
+    WHERE o.vstdate BETWEEN '${startDate}' AND '${endDate}' 
+      AND o1.export_code = '5'
+    GROUP BY o.pttype, pt.name
+    ORDER BY visit_count DESC
+  `;
+
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (r) => ({
+    pttypeName: String(r['pttype_name'] ?? 'ไม่ระบุสิทธิ์'),
+    count: Number(r['visit_count'] ?? 0),
+  }));
+}
+
+export async function getTelemedicineByVisitType(
+  config: ConnectionConfig,
+  startDate: string,
+  endDate: string,
+): Promise<TelemedicineVisitType[]> {
+  const sql = `
+    SELECT 
+      CONCAT(COALESCE(o1.name, 'ไม่ระบุ'), ' (', o1.export_code, ')') as visit_type_name,
+      COUNT(*) as visit_count
+    FROM ovst o
+    INNER JOIN ovstist o1 ON o.ovstist = o1.ovstist
+    LEFT OUTER JOIN kskdepartment ON o.main_dep = kskdepartment.depcode
+    LEFT OUTER JOIN pttype pt ON o.pttype = pt.pttype
+    WHERE o.vstdate BETWEEN '${startDate}' AND '${endDate}' 
+      AND o1.export_code IN ('2', '3', '5')
+    GROUP BY o1.ovstist, o1.name, o1.export_code
+    ORDER BY visit_count DESC
+  `;
+
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (r) => ({
+    visitTypeName: String(r['visit_type_name'] ?? 'ไม่ระบุ'),
+    count: Number(r['visit_count'] ?? 0),
   }));
 }

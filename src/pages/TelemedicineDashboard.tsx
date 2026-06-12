@@ -4,6 +4,8 @@ import { useQuery } from '@/hooks/useQuery'
 import {
   getTelemedicineSummary,
   getTelemedicineMonthlyTrend,
+  getTelemedicineByPayerType,
+  getTelemedicineByVisitType,
 } from '@/services/telemedicineService'
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -12,15 +14,17 @@ import { Badge } from '@/components/ui/badge'
 import { LoadingSpinner } from '@/components/layout/LoadingSpinner'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend,
+  Tooltip, Legend, PieChart, Pie, Cell
 } from 'recharts'
 import { getFiscalYearRange } from '@/utils/dateUtils'
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker'
 import {
-  Activity, MonitorSmartphone, Target, AlertCircle, Users, TrendingUp
+  Activity, MonitorSmartphone, Target, AlertCircle, Users, TrendingUp, List
 } from 'lucide-react'
 
 function fmt(n: number) { return n.toLocaleString('th-TH') }
+
+const PIE_COLORS = ['#0ea5e9', '#3b82f6', '#4f46e5', '#4338ca', '#312e81', '#1e3a8a', '#172554']
 
 // ---------------------------------------------------------------------------
 // Main Page
@@ -55,10 +59,22 @@ export default function TelemedicineDashboard() {
     queryFn: useCallback(() => getTelemedicineMonthlyTrend(connectionConfig!, dbType, startDate, endDate), [connectionConfig, dbType, startDate, endDate]),
     enabled: isConnected,
   })
+  const payerTypeQ = useQuery({
+    queryFn: useCallback(() => getTelemedicineByPayerType(connectionConfig!, startDate, endDate), [connectionConfig, startDate, endDate]),
+    enabled: isConnected,
+  })
+  const visitTypeQ = useQuery({
+    queryFn: useCallback(() => getTelemedicineByVisitType(connectionConfig!, startDate, endDate), [connectionConfig, startDate, endDate]),
+    enabled: isConnected,
+  })
 
   const summary = summaryQ.data
-  const isLoading = summaryQ.isLoading || monthlyQ.isLoading
+  const isLoading = summaryQ.isLoading || monthlyQ.isLoading || payerTypeQ.isLoading || visitTypeQ.isLoading
   const isTargetMet = summary ? summary.telemedicineRate >= 30 : false;
+  
+  // คำนวณจำนวนที่ขาดเพื่อให้ถึงเป้าหมาย 30%
+  const targetVisits = summary ? Math.ceil(summary.totalOpVisits * 0.3) : 0;
+  const missingVisits = summary ? Math.max(0, targetVisits - summary.telemedicineVisits) : 0;
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -165,7 +181,7 @@ export default function TelemedicineDashboard() {
                     <p className="mt-1 text-3xl font-bold text-blue-800">30%</p>
                     <div className="mt-1 flex items-center gap-1.5 text-xs font-medium">
                       <span className={isTargetMet ? 'text-green-600' : 'text-amber-600'}>
-                        {isTargetMet ? 'ผ่านเกณฑ์เป้าหมาย 🎉' : 'ต่ำกว่าเป้าหมาย'}
+                        {isTargetMet ? 'ผ่านเกณฑ์เป้าหมาย 🎉' : `ต่ำกว่าเป้าหมาย (ขาดอีก ${fmt(missingVisits)} ครั้ง)`}
                       </span>
                     </div>
                   </div>
@@ -177,34 +193,112 @@ export default function TelemedicineDashboard() {
             </Card>
           </div>
 
-          {/* ── Monthly Trend ── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base text-indigo-900">
-                <TrendingUp className="h-5 w-5 text-indigo-700" />
-                แนวโน้มการรับบริการแพทย์ทางไกลรายเดือน
-              </CardTitle>
-              <CardDescription>เปรียบเทียบจำนวนการให้บริการแพทย์ทางไกล และผู้ป่วยนอกที่เกี่ยวข้องในแต่ละเดือน</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart data={monthlyQ.data ?? []} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip
-                    formatter={(value: number, name: string) => [
-                      fmt(value),
-                      name === 'telemedicineVisits' ? 'แพทย์ทางไกล (A)' : 'ผู้ป่วยนอกที่เกี่ยวข้อง (B)'
-                    ]}
-                  />
-                  <Legend />
-                  <Bar dataKey="telemedicineVisits" name="แพทย์ทางไกล (A)" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={32} />
-                  <Bar dataKey="totalOpVisits" name="ผู้ป่วยนอกที่เกี่ยวข้อง (B)" fill="#312e81" radius={[4, 4, 0, 0]} barSize={32} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          <div className="flex flex-col gap-6">
+            {/* ── Monthly Trend ── */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base text-indigo-900">
+                  <TrendingUp className="h-5 w-5 text-indigo-700" />
+                  แนวโน้มการรับบริการแพทย์ทางไกลรายเดือน
+                </CardTitle>
+                <CardDescription>เปรียบเทียบจำนวนการให้บริการและผู้ป่วยนอกที่เกี่ยวข้อง</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={monthlyQ.data ?? []} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      formatter={(value: number, name: string) => [
+                        fmt(value),
+                        name === 'telemedicineVisits' ? 'แพทย์ทางไกล (A)' : 'ผู้ป่วยนอกที่เกี่ยวข้อง (B)'
+                      ]}
+                    />
+                    <Legend />
+                    <Bar dataKey="telemedicineVisits" name="แพทย์ทางไกล (A)" fill="#0ea5e9" radius={[4, 4, 0, 0]} barSize={24} />
+                    <Bar dataKey="totalOpVisits" name="ผู้ป่วยนอกที่เกี่ยวข้อง (B)" fill="#312e81" radius={[4, 4, 0, 0]} barSize={24} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* ── Payer Type Distribution ── */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base text-indigo-900">
+                    <Users className="h-5 w-5 text-indigo-700" />
+                    แยกผู้รับบริการตามสิทธิ์การรักษา (Top 10)
+                  </CardTitle>
+                  <CardDescription>สัดส่วนผู้รับบริการ Telemedicine แยกตามสิทธิ์</CardDescription>
+                </CardHeader>
+                <CardContent className="flex items-center gap-4">
+                  <div className="h-64 w-64 shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={(payerTypeQ.data ?? []).slice(0, 10)} dataKey="count" nameKey="pttypeName"
+                          innerRadius={60} outerRadius={90} paddingAngle={2}>
+                          {((payerTypeQ.data ?? []).slice(0, 10)).map((_, i) => (
+                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(v: unknown) => `${fmt(v as number)} ครั้ง`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-2 overflow-auto max-h-64 pr-2">
+                    {((payerTypeQ.data ?? []).slice(0, 10)).map((p, i) => (
+                      <div key={p.pttypeName} className="flex items-center justify-between text-xs gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                          <span className="truncate">{p.pttypeName}</span>
+                        </div>
+                        <span className="font-semibold text-indigo-900 shrink-0">{fmt(p.count)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* ── Visit Type Distribution ── */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base text-indigo-900">
+                    <List className="h-5 w-5 text-indigo-700" />
+                    แยกตามประเภทการมา (Visit Type)
+                  </CardTitle>
+                  <CardDescription>สัดส่วนผู้รับบริการผู้ป่วยนอกทั้งหมดที่เกี่ยวข้อง</CardDescription>
+                </CardHeader>
+                <CardContent className="flex items-center gap-4">
+                  <div className="h-64 w-64 shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={(visitTypeQ.data ?? []).slice(0, 10)} dataKey="count" nameKey="visitTypeName"
+                          innerRadius={60} outerRadius={90} paddingAngle={2}>
+                          {((visitTypeQ.data ?? []).slice(0, 10)).map((_, i) => (
+                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(v: unknown) => `${fmt(v as number)} ครั้ง`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-2 overflow-auto max-h-64 pr-2">
+                    {((visitTypeQ.data ?? []).slice(0, 10)).map((v, i) => (
+                      <div key={v.visitTypeName} className="flex items-center justify-between text-xs gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                          <span className="truncate">{v.visitTypeName}</span>
+                        </div>
+                        <span className="font-semibold text-indigo-900 shrink-0">{fmt(v.count)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </>
       )}
     </div>

@@ -119,7 +119,7 @@ export default function ThaiTraditionalMedicine() {
     enabled: isConnected,
   })
   const doctorQ = useQuery({
-    queryFn: useCallback(() => getTtmDoctorWorkload(connectionConfig!, startDate, endDate), [connectionConfig, startDate, endDate]),
+    queryFn: useCallback(() => getTtmDoctorWorkload(connectionConfig!, dbType, startDate, endDate), [connectionConfig, dbType, startDate, endDate]),
     enabled: isConnected,
   })
   const ageQ = useQuery({
