@@ -31,6 +31,8 @@ export interface TtmMonthlyTrend {
   month: string;
   totalServiceRevenue: number;
   totalDrugRevenue: number;
+  totalSessions: number;
+  uniquePatients: number;
 }
 
 export interface TtmServiceTypeSummary {
@@ -135,7 +137,10 @@ export async function getTtmMonthlyTrend(
 ): Promise<TtmMonthlyTrend[]> {
   const monthExprSvc = queryBuilder.dateFormat(dbType, 'h2.service_date', '%Y-%m');
   const sqlSvc = `
-    SELECT ${monthExprSvc} as month_val, COALESCE(SUM(h1.service_price), 0) as total_service
+    SELECT ${monthExprSvc} as month_val, 
+           COALESCE(SUM(h1.service_price), 0) as total_service,
+           COUNT(h1.health_med_service_id) as session_count,
+           COUNT(DISTINCT h2.hn) as unique_patients
     FROM health_med_service_operation h1
     JOIN health_med_service h2 ON h2.health_med_service_id = h1.health_med_service_id
     WHERE h2.service_date BETWEEN '${startDate}' AND '${endDate}'
@@ -158,7 +163,9 @@ export async function getTtmMonthlyTrend(
 
   const svcData = parseQueryResponse(svcRes, r => ({
     month: String(r['month_val']),
-    val: Number(r['total_service'])
+    val: Number(r['total_service']),
+    sessions: Number(r['session_count'] ?? 0),
+    patients: Number(r['unique_patients'] ?? 0),
   }));
 
   const drugData = parseQueryResponse(drugRes, r => ({
@@ -169,12 +176,18 @@ export async function getTtmMonthlyTrend(
   const map = new Map<string, TtmMonthlyTrend>();
   
   svcData.forEach(d => {
-    map.set(d.month, { month: d.month, totalServiceRevenue: d.val, totalDrugRevenue: 0 });
+    map.set(d.month, { 
+      month: d.month, 
+      totalServiceRevenue: d.val, 
+      totalDrugRevenue: 0,
+      totalSessions: d.sessions,
+      uniquePatients: d.patients
+    });
   });
   
   drugData.forEach(d => {
     if (!map.has(d.month)) {
-      map.set(d.month, { month: d.month, totalServiceRevenue: 0, totalDrugRevenue: 0 });
+      map.set(d.month, { month: d.month, totalServiceRevenue: 0, totalDrugRevenue: 0, totalSessions: 0, uniquePatients: 0 });
     }
     map.get(d.month)!.totalDrugRevenue = d.val;
   });
@@ -220,7 +233,7 @@ export async function getTtmDoctorWorkload(
   const sql = `
     SELECT 
       h1.health_med_provider_id AS doctor_code, 
-      COALESCE(h4.health_med_provider_full_name, h1.health_med_provider_id, 'ไม่ระบุ') AS doctor_name, 
+      COALESCE(h4.health_med_provider_fname, h1.health_med_provider_id, 'ไม่ระบุ') AS doctor_name, 
       COUNT(h1.health_med_provider_id) AS session_count, 
       COUNT(DISTINCT h2.hn) AS unique_patients, 
       COALESCE(SUM(h1.service_price), 0) AS total_value 
@@ -228,7 +241,7 @@ export async function getTtmDoctorWorkload(
     JOIN health_med_service h2 ON h2.health_med_service_id = h1.health_med_service_id 
     JOIN health_med_provider h4 ON h4.health_med_provider_id = h1.health_med_provider_id 
     WHERE h2.service_date BETWEEN '${startDate}' AND '${endDate}' 
-    GROUP BY h1.health_med_provider_id, h4.health_med_provider_full_name 
+    GROUP BY h1.health_med_provider_id, h4.health_med_provider_fname 
     ORDER BY session_count DESC 
     LIMIT 15
   `;

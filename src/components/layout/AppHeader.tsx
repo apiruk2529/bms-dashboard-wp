@@ -17,6 +17,7 @@ import {
   Ambulance,
   HeartPulse,
   Leaf,
+  MonitorSmartphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -40,6 +41,7 @@ const NAV_TABS: NavTab[] = [
   { label: 'NCDs ภาพรวม', path: '/ncd-dashboard', icon: HeartPulse },
   { label: 'ภาพรวม refer', path: '/refer-overview', icon: Ambulance },
   { label: 'แพทย์แผนไทย', path: '/ttm-dashboard', icon: Leaf },
+  { label: 'Telemed', path: '/telemedicine', icon: MonitorSmartphone },
 ];
 
 // ---------------------------------------------------------------------------
@@ -57,7 +59,7 @@ export function AppHeader() {
   const userInitial = session?.userInfo.name?.charAt(0).toUpperCase() ?? '?';
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center justify-between bg-gradient-to-r from-slate-900 to-slate-800 px-6 shadow-lg">
+    <header className="sticky top-0 z-50 flex h-16 items-center justify-between bg-gradient-to-r from-blue-950 to-indigo-950 px-6 shadow-lg">
       {/* ----------------------------------------------------------------- */}
       {/* Left: Hospital icon + title                                       */}
       {/* ----------------------------------------------------------------- */}

@@ -172,3 +172,46 @@ export async function getDepartmentDailyTrend(
  * Attempts the `patient` table first. If the result set is empty (e.g. the
  * table is not populated), falls back to `ovst_patient_record`.
  */
+
+export interface WorkloadIcd10Item {
+  staff: string;
+  vstdate: string;
+  total: number;
+  recorded: number;
+  blank: number;
+}
+
+/**
+ * Daily ICD10 tracking summary.
+ */
+export async function getWorkloadIcd10Daily(
+  config: ConnectionConfig,
+  dbType: DatabaseType,
+  startDate: string,
+  endDate: string,
+): Promise<WorkloadIcd10Item[]> {
+  const sql =
+    `SELECT COALESCE(ov.staff, 'No Staff') AS staff, o.vstdate as vstdate, ` +
+    `COUNT(o.vn) AS total, ` +
+    `SUM(CASE WHEN ov.icd10 IS NOT NULL AND ov.icd10 != '' THEN 1 ELSE 0 END) AS recorded, ` +
+    `SUM(CASE WHEN ov.icd10 IS NULL OR ov.icd10 = '' THEN 1 ELSE 0 END) AS blank ` +
+    `FROM ovst o ` +
+    `LEFT OUTER JOIN ovstdiag ov ON o.vn = ov.vn AND ov.diagtype = '1' ` +
+    `WHERE o.vstdate >= '${startDate}' AND o.vstdate <= '${endDate}' ` +
+    `GROUP BY ov.staff, o.vstdate ` +
+    `ORDER BY o.vstdate ASC`;
+
+  const response = await executeSqlViaApi(sql, config);
+  return parseQueryResponse(response, (row) => {
+    const rawStaff = String(row['staff'] ?? '');
+    const staff = rawStaff.toLowerCase() === 'no staff' ? 'No Staff' : rawStaff.toLowerCase();
+    
+    return {
+      staff,
+      vstdate: String(row['vstdate'] ?? ''),
+      total: Number(row['total'] ?? 0),
+      recorded: Number(row['recorded'] ?? 0),
+      blank: Number(row['blank'] ?? 0),
+    };
+  });
+}

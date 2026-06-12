@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useBmsSessionContext } from '@/contexts/BmsSessionContext'
 import { useQuery } from '@/hooks/useQuery'
-import { getWorkloadDaily } from '@/services/departmentAnalyticsService'
+import { getWorkloadDaily, getWorkloadIcd10Daily, type WorkloadIcd10Item } from '@/services/departmentAnalyticsService'
 import { getFiscalYearRange } from '@/utils/dateUtils'
 import { DateRangePicker } from '@/components/dashboard/DateRangePicker'
 import { EmptyState } from '@/components/dashboard/EmptyState'
@@ -79,6 +79,25 @@ export default function Workload() {
     isLoading,
   } = useQuery<WorkloadDailyItem[]>({
     queryFn,
+    enabled: connectionConfig !== null && session !== null,
+  })
+
+  const queryIcd10Fn = useCallback(
+    () =>
+      getWorkloadIcd10Daily(
+        connectionConfig!,
+        session!.databaseType,
+        startDate,
+        endDate,
+      ),
+    [connectionConfig, session, startDate, endDate],
+  )
+
+  const {
+    data: rawIcd10Data,
+    isLoading: isIcd10Loading,
+  } = useQuery<WorkloadIcd10Item[]>({
+    queryFn: queryIcd10Fn,
     enabled: connectionConfig !== null && session !== null,
   })
 
@@ -250,6 +269,47 @@ export default function Workload() {
     if (selectedStaff === 'all') return summaryData
     return summaryData.filter((r) => r.staff === selectedStaff)
   }, [summaryData, selectedStaff])
+
+  const icd10ChartData = useMemo(() => {
+    if (!rawIcd10Data || rawIcd10Data.length === 0) return []
+
+    // Filter by staff if needed
+    const dataToProcess = selectedStaff === 'all'
+      ? rawIcd10Data
+      : rawIcd10Data.filter(r => r.staff === selectedStaff)
+
+    // Aggregate by date
+    const dateMap = new Map<string, any>()
+    dataToProcess.forEach(r => {
+      if (!dateMap.has(r.vstdate)) {
+        dateMap.set(r.vstdate, { vstdate: r.vstdate, recorded: 0, blank: 0 })
+      }
+      const item = dateMap.get(r.vstdate)!
+      item.recorded += r.recorded
+      item.blank += r.blank
+    })
+    return Array.from(dateMap.values()).sort((a, b) => a.vstdate.localeCompare(b.vstdate))
+  }, [rawIcd10Data, selectedStaff])
+
+  const icd10StaffChartData = useMemo(() => {
+    if (!rawIcd10Data || rawIcd10Data.length === 0) return []
+
+    // Group by staff
+    const staffMap = new Map<string, any>()
+    rawIcd10Data.forEach(r => {
+      if (!staffMap.has(r.staff)) {
+        staffMap.set(r.staff, { staff: r.staff, recorded: 0, blank: 0 })
+      }
+      const item = staffMap.get(r.staff)!
+      item.recorded += r.recorded
+      item.blank += r.blank
+    })
+
+    const aggregated = Array.from(staffMap.values()).sort((a, b) => (b.recorded + b.blank) - (a.recorded + a.blank))
+
+    if (selectedStaff === 'all') return aggregated
+    return aggregated.filter(r => r.staff === selectedStaff)
+  }, [rawIcd10Data, selectedStaff])
 
   const handleRangeChange = useCallback(
     (start: string, end: string) => {
@@ -623,6 +683,146 @@ export default function Workload() {
                         stackId="time"
                         fill="#10b981"
                         radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* ICD10 Trend Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">
+                การติดตาม การลง ICD10 (รายวัน)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isIcd10Loading ? (
+                <Skeleton className="h-[420px] w-full" />
+              ) : icd10ChartData.length === 0 ? (
+                <div className="flex h-[420px] items-center justify-center">
+                  <EmptyState
+                    title="ไม่พบข้อมูล ICD10"
+                    description="ลองเลือกช่วงวันที่อื่นหรือรีเฟรชหน้าอีกครั้ง"
+                  />
+                </div>
+              ) : (
+                <div className="h-[420px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={icd10ChartData}
+                      margin={{ top: 15, right: 24, left: 16, bottom: 20 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis
+                        dataKey="vstdate"
+                        tick={{ fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        type="number"
+                        tick={{ fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={false}
+                        allowDecimals={false}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: '8px',
+                          border: '1px solid hsl(var(--border))',
+                          backgroundColor: 'hsl(var(--popover))',
+                          color: 'hsl(var(--popover-foreground))',
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12, paddingTop: '10px' }} />
+                      <Bar
+                        dataKey="recorded"
+                        name="ลง ICD10 แล้ว"
+                        stackId="icd10"
+                        fill="#10b981"
+                      />
+                      <Bar
+                        dataKey="blank"
+                        name="ยังไม่ลง (ว่าง)"
+                        stackId="icd10"
+                        fill="#ef4444"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ICD10 Staff Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium">
+                จำนวนที่ลง ICD10 แยกตามพนักงาน
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isIcd10Loading ? (
+                <Skeleton className="h-[420px] w-full" />
+              ) : icd10StaffChartData.length === 0 ? (
+                <div className="flex h-[420px] items-center justify-center">
+                  <EmptyState
+                    title="ไม่พบข้อมูล ICD10"
+                    description="ลองเลือกช่วงวันที่อื่นหรือรีเฟรชหน้าอีกครั้ง"
+                  />
+                </div>
+              ) : (
+                <div className="h-[420px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={icd10StaffChartData}
+                      layout="vertical"
+                      margin={{ top: 15, right: 24, left: 30, bottom: 20 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={false} />
+                      <XAxis
+                        type="number"
+                        tick={{ fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={false}
+                        allowDecimals={false}
+                      />
+                      <YAxis
+                        dataKey="staff"
+                        type="category"
+                        width={160}
+                        interval={0}
+                        tick={{ fontSize: 12 }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: '8px',
+                          border: '1px solid hsl(var(--border))',
+                          backgroundColor: 'hsl(var(--popover))',
+                          color: 'hsl(var(--popover-foreground))',
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12, paddingTop: '10px' }} />
+                      <Bar
+                        dataKey="recorded"
+                        name="ลง ICD10 แล้ว"
+                        stackId="icd10staff"
+                        fill="#10b981"
+                      />
+                      <Bar
+                        dataKey="blank"
+                        name="ยังไม่ลง (ว่าง)"
+                        stackId="icd10staff"
+                        fill="#ef4444"
+                        radius={[0, 4, 4, 0]}
                       />
                     </BarChart>
                   </ResponsiveContainer>

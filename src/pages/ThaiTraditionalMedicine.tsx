@@ -263,7 +263,7 @@ export default function ThaiTraditionalMedicine() {
                         <Tooltip formatter={(v: unknown) => [`฿${(v as number).toLocaleString()}`]} />
                         <Legend />
                         <Area stackId="rev" type="monotone" dataKey="totalServiceRevenue" stroke={TTM_COLORS.primary} strokeWidth={2} fill="url(#svcGrad)" name="ค่าบริการ" />
-                        <Area stackId="rev" type="monotone" dataKey="totalHerbalRevenue" stroke={TTM_COLORS.warm} strokeWidth={2} fill="url(#herbGrad)" name="ค่ายาสมุนไพร" />
+                        <Area stackId="rev" type="monotone" dataKey="totalDrugRevenue" stroke={TTM_COLORS.warm} strokeWidth={2} fill="url(#herbGrad)" name="ค่ายาสมุนไพร" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </CardContent>
