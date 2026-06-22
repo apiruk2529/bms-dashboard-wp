@@ -210,8 +210,8 @@ export default function TelemedicineDashboard() {
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
-                      formatter={(value: number, name: string) => [
-                        fmt(value),
+                      formatter={(value: any, name: any) => [
+                        fmt(value as number),
                         name === 'telemedicineVisits' ? 'แพทย์ทางไกล (A)' : 'ผู้ป่วยนอกที่เกี่ยวข้อง (B)'
                       ]}
                     />
